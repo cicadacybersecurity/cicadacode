@@ -1,0 +1,239 @@
+timestamp=2026-08-24T23:13:35.669Z level=INFO run=cce48e56 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:13:35.671Z level=INFO run=cce48e56 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:13:35.822Z level=INFO run=cce48e56 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:13:35.830Z level=INFO run=cce48e56 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:13:35.832Z level=INFO run=cce48e56 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:13:35.868Z level=INFO run=cce48e56 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:13:35.880Z level=INFO run=cce48e56 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:13:35.933Z level=INFO run=cce48e56 message="all LSPs are disabled"
+timestamp=2026-08-24T23:13:35.935Z level=INFO run=cce48e56 message="all formatters are disabled"
+timestamp=2026-08-24T23:13:35.935Z level=INFO run=cce48e56 message=init
+timestamp=2026-08-24T23:13:36.592Z level=INFO run=cce48e56 message=init count=1
+timestamp=2026-08-24T23:13:36.722Z level=INFO run=cce48e56 message="downloading ripgrep" url=https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip
+timestamp=2026-08-24T23:13:36.824Z level=INFO run=cce48e56 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:13:36.838Z level=INFO run=cce48e56 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:13:36.841Z level=INFO run=cce48e56 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:13:37.205Z level=INFO run=cce48e56 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:13:39.677Z level=INFO run=cce48e56 message=created id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 slug=proud-harbor version=1.18.22 projectID=global directory="C:\\Users\\David\\minimax-agents" path=Users/David/minimax-agents workspaceID=undefined parentID=undefined title="New session - 2026-08-24T23:13:39.677Z" agent=build model.id=MiniMax-M2.7 model.providerID=minimax metadata=undefined permission=undefined cost=0 tokens.input=0 tokens.output=0 tokens.reasoning=0 tokens.cache.read=0 tokens.cache.write=0 time.created=1787613219677 time.updated=1787613219677
+timestamp=2026-08-24T23:13:39.718Z level=INFO run=cce48e56 message=loop session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 step=0
+timestamp=2026-08-24T23:13:39.792Z level=INFO run=cce48e56 message="shell tool using shell" shell="C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE"
+timestamp=2026-08-24T23:13:39.830Z level=INFO run=cce48e56 message=stream providerID=minimax modelID=MiniMax-M2.7 session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 small=true agent=title mode=primary
+timestamp=2026-08-24T23:13:39.858Z level=INFO run=cce48e56 message="llm runtime selected" llm.runtime=ai-sdk llm.provider=minimax llm.model=MiniMax-M2.7
+timestamp=2026-08-24T23:13:39.913Z level=INFO run=cce48e56 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:13:39.923Z level=INFO run=cce48e56 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:13:39.924Z level=INFO run=cce48e56 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:13:40.290Z level=INFO run=cce48e56 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:13:40.770Z level=INFO run=cce48e56 message=process session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 messageID=msg_0360d0b89001XnrHp4QjRwmCF8
+timestamp=2026-08-24T23:13:40.771Z level=INFO run=cce48e56 message=stream providerID=minimax modelID=MiniMax-M2.7 session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 small=false agent=build mode=primary
+timestamp=2026-08-24T23:13:40.773Z level=INFO run=cce48e56 message="llm runtime selected" llm.runtime=ai-sdk llm.provider=minimax llm.model=MiniMax-M2.7
+timestamp=2026-08-24T23:13:42.804Z level=INFO run=cce48e56 message=loop session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7 step=1
+timestamp=2026-08-24T23:13:42.806Z level=INFO run=cce48e56 message="exiting loop" session.id=ses_fc9f2f4a2ffeKJdojGUOxEbOS7
+timestamp=2026-08-24T23:16:00.118Z level=INFO run=4f8028c2 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.120Z level=INFO run=4f8028c2 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.297Z level=INFO run=4f8028c2 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.307Z level=INFO run=4f8028c2 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:16:00.308Z level=INFO run=4f8028c2 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:16:00.335Z level=INFO run=4f8028c2 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:16:00.344Z level=INFO run=4f8028c2 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:16:00.404Z level=INFO run=4f8028c2 message="all LSPs are disabled"
+timestamp=2026-08-24T23:16:00.406Z level=INFO run=4f8028c2 message="all formatters are disabled"
+timestamp=2026-08-24T23:16:00.407Z level=INFO run=4f8028c2 message=init
+timestamp=2026-08-24T23:16:00.185Z level=INFO run=a05ddc01 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.188Z level=INFO run=a05ddc01 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.356Z level=INFO run=a05ddc01 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.367Z level=INFO run=a05ddc01 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:16:00.368Z level=INFO run=a05ddc01 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:16:00.376Z level=INFO run=a05ddc01 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:16:00.403Z level=INFO run=a05ddc01 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:16:00.459Z level=INFO run=a05ddc01 message="all LSPs are disabled"
+timestamp=2026-08-24T23:16:00.462Z level=INFO run=a05ddc01 message="all formatters are disabled"
+timestamp=2026-08-24T23:16:00.462Z level=INFO run=a05ddc01 message=init
+timestamp=2026-08-24T23:16:00.023Z level=INFO run=6abfa5a6 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.025Z level=INFO run=6abfa5a6 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.185Z level=INFO run=6abfa5a6 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:16:00.194Z level=INFO run=6abfa5a6 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:16:00.196Z level=INFO run=6abfa5a6 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:16:00.224Z level=INFO run=6abfa5a6 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:16:00.236Z level=INFO run=6abfa5a6 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:16:00.300Z level=INFO run=6abfa5a6 message="all LSPs are disabled"
+timestamp=2026-08-24T23:16:00.302Z level=INFO run=6abfa5a6 message="all formatters are disabled"
+timestamp=2026-08-24T23:16:00.302Z level=INFO run=6abfa5a6 message=init
+timestamp=2026-08-24T23:16:01.508Z level=INFO run=4f8028c2 message=init count=1
+timestamp=2026-08-24T23:16:01.958Z level=INFO run=4f8028c2 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:16:01.987Z level=INFO run=4f8028c2 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:16:01.991Z level=INFO run=4f8028c2 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:16:02.091Z level=INFO run=4f8028c2 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:16:01.569Z level=INFO run=a05ddc01 message=init count=1
+timestamp=2026-08-24T23:16:02.039Z level=INFO run=a05ddc01 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:16:02.064Z level=INFO run=a05ddc01 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:16:02.068Z level=INFO run=a05ddc01 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:16:02.179Z level=INFO run=a05ddc01 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:16:01.760Z level=INFO run=6abfa5a6 message=init count=1
+timestamp=2026-08-24T23:16:02.270Z level=INFO run=6abfa5a6 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:16:02.294Z level=INFO run=6abfa5a6 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:16:02.297Z level=INFO run=6abfa5a6 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:16:02.770Z level=INFO run=6abfa5a6 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:18:24.722Z level=INFO run=3a04e620 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:24.725Z level=INFO run=3a04e620 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:24.867Z level=INFO run=3a04e620 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:24.878Z level=INFO run=3a04e620 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:18:24.879Z level=INFO run=3a04e620 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:18:24.887Z level=INFO run=3a04e620 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:18:24.918Z level=INFO run=3a04e620 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:18:24.970Z level=INFO run=3a04e620 message="all LSPs are disabled"
+timestamp=2026-08-24T23:18:24.973Z level=INFO run=3a04e620 message="all formatters are disabled"
+timestamp=2026-08-24T23:18:24.973Z level=INFO run=3a04e620 message=init
+timestamp=2026-08-24T23:18:25.472Z level=INFO run=42e45ead message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:25.474Z level=INFO run=42e45ead message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:25.635Z level=INFO run=42e45ead message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:25.647Z level=INFO run=42e45ead message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:18:25.649Z level=INFO run=42e45ead message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:18:25.682Z level=INFO run=42e45ead message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:18:25.694Z level=INFO run=42e45ead message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:18:25.765Z level=INFO run=42e45ead message="all LSPs are disabled"
+timestamp=2026-08-24T23:18:25.767Z level=INFO run=42e45ead message="all formatters are disabled"
+timestamp=2026-08-24T23:18:25.767Z level=INFO run=42e45ead message=init
+timestamp=2026-08-24T23:18:26.185Z level=INFO run=fdcd1a4e message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:26.187Z level=INFO run=fdcd1a4e message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:26.481Z level=INFO run=fdcd1a4e message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-24T23:18:26.503Z level=INFO run=fdcd1a4e message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-24T23:18:26.504Z level=INFO run=fdcd1a4e message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-24T23:18:26.511Z level=INFO run=fdcd1a4e message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-24T23:18:26.537Z level=INFO run=fdcd1a4e message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-24T23:18:26.623Z level=INFO run=fdcd1a4e message="all LSPs are disabled"
+timestamp=2026-08-24T23:18:26.625Z level=INFO run=fdcd1a4e message="all formatters are disabled"
+timestamp=2026-08-24T23:18:26.625Z level=INFO run=fdcd1a4e message=init
+timestamp=2026-08-24T23:18:25.727Z level=INFO run=3a04e620 message=init count=1
+timestamp=2026-08-24T23:18:26.067Z level=INFO run=3a04e620 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:18:26.087Z level=INFO run=3a04e620 message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:18:26.090Z level=INFO run=3a04e620 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:18:26.466Z level=INFO run=3a04e620 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:18:27.555Z level=INFO run=fdcd1a4e message=init count=1
+timestamp=2026-08-24T23:18:28.022Z level=INFO run=fdcd1a4e message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:18:28.058Z level=INFO run=fdcd1a4e message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:18:28.063Z level=INFO run=fdcd1a4e message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:18:26.604Z level=INFO run=42e45ead message=init count=1
+timestamp=2026-08-24T23:18:26.997Z level=INFO run=42e45ead message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-24T23:18:27.018Z level=INFO run=42e45ead message="project copy refresh started" projectID=global
+timestamp=2026-08-24T23:18:27.022Z level=INFO run=42e45ead message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-24T23:18:27.491Z level=INFO run=42e45ead message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-24T23:18:28.787Z level=INFO run=fdcd1a4e message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-25T00:07:55.357Z level=INFO run=3734466b message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:55.360Z level=INFO run=3734466b message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:55.730Z level=INFO run=3734466b message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:55.738Z level=INFO run=3734466b message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:07:55.739Z level=INFO run=3734466b message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:07:55.751Z level=INFO run=3734466b message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:07:55.778Z level=INFO run=3734466b message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-25T00:07:55.842Z level=INFO run=3734466b message="all LSPs are disabled"
+timestamp=2026-08-25T00:07:55.846Z level=INFO run=3734466b message="all formatters are disabled"
+timestamp=2026-08-25T00:07:55.846Z level=INFO run=3734466b message=init
+timestamp=2026-08-25T00:07:56.257Z level=INFO run=7c69fc11 message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:56.260Z level=INFO run=7c69fc11 message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:56.477Z level=INFO run=7c69fc11 message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:56.523Z level=INFO run=7c69fc11 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:07:56.531Z level=INFO run=7c69fc11 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:07:56.537Z level=INFO run=7c69fc11 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:07:56.548Z level=INFO run=7c69fc11 message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-25T00:07:56.623Z level=INFO run=7c69fc11 message="all LSPs are disabled"
+timestamp=2026-08-25T00:07:56.625Z level=INFO run=7c69fc11 message="all formatters are disabled"
+timestamp=2026-08-25T00:07:56.625Z level=INFO run=7c69fc11 message=init
+timestamp=2026-08-25T00:07:57.130Z level=INFO run=a56fb1bb message="creating instance" directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:57.132Z level=INFO run=a56fb1bb message=fromDirectory directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:57.330Z level=INFO run=a56fb1bb message=bootstrapping directory="C:\\Users\\David\\minimax-agents"
+timestamp=2026-08-25T00:07:57.382Z level=INFO run=a56fb1bb message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:07:57.383Z level=INFO run=a56fb1bb message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:07:57.391Z level=INFO run=a56fb1bb message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:07:57.445Z level=INFO run=a56fb1bb message=loading path="C:\\Users\\David\\minimax-agents\\opencode.json"
+timestamp=2026-08-25T00:07:57.533Z level=INFO run=a56fb1bb message="all LSPs are disabled"
+timestamp=2026-08-25T00:07:57.535Z level=INFO run=a56fb1bb message="all formatters are disabled"
+timestamp=2026-08-25T00:07:57.535Z level=INFO run=a56fb1bb message=init
+timestamp=2026-08-25T00:07:56.728Z level=INFO run=3734466b message=init count=1
+timestamp=2026-08-25T00:07:57.108Z level=INFO run=3734466b message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-25T00:07:57.120Z level=INFO run=3734466b message="project copy refresh started" projectID=global
+timestamp=2026-08-25T00:07:57.122Z level=INFO run=3734466b message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-25T00:07:57.530Z level=INFO run=3734466b message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-25T00:07:57.503Z level=INFO run=7c69fc11 message=init count=1
+timestamp=2026-08-25T00:07:57.893Z level=INFO run=7c69fc11 message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-25T00:07:57.908Z level=INFO run=7c69fc11 message="project copy refresh started" projectID=global
+timestamp=2026-08-25T00:07:57.910Z level=INFO run=7c69fc11 message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-25T00:07:58.368Z level=INFO run=7c69fc11 message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-25T00:07:58.431Z level=INFO run=a56fb1bb message=init count=1
+timestamp=2026-08-25T00:07:58.779Z level=INFO run=a56fb1bb message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-25T00:07:58.790Z level=INFO run=a56fb1bb message="project copy refresh started" projectID=global
+timestamp=2026-08-25T00:07:58.793Z level=INFO run=a56fb1bb message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-25T00:07:59.059Z level=INFO run=a56fb1bb message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-25T00:09:41.634Z level=INFO run=44fbb289 message="loading tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json"
+timestamp=2026-08-25T00:09:41.639Z level=INFO run=44fbb289 message="applying tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json" order=1
+timestamp=2026-08-25T00:09:42.918Z level=INFO run=f24c4bac message="creating instance" directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:42.920Z level=INFO run=f24c4bac message=fromDirectory directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:43.473Z level=INFO run=f24c4bac message=bootstrapping directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:43.489Z level=INFO run=f24c4bac message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:09:43.490Z level=INFO run=f24c4bac message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:09:43.495Z level=INFO run=f24c4bac message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:43.539Z level=INFO run=f24c4bac message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.json"
+timestamp=2026-08-25T00:09:43.539Z level=INFO run=f24c4bac message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:43.062Z level=INFO run=403d95f6 message="loading tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json"
+timestamp=2026-08-25T00:09:43.072Z level=INFO run=403d95f6 message="applying tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json" order=1
+timestamp=2026-08-25T00:09:43.768Z level=INFO run=940bff75 message="loading tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json"
+timestamp=2026-08-25T00:09:43.780Z level=INFO run=940bff75 message="applying tui config" path="C:\\Users\\David\\opencode-cicada\\.opencode\\tui.json" order=1
+timestamp=2026-08-25T00:09:44.393Z level=INFO run=24cd3f75 message="creating instance" directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:44.395Z level=INFO run=24cd3f75 message=fromDirectory directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:45.138Z level=INFO run=24cd3f75 message=bootstrapping directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:45.159Z level=INFO run=24cd3f75 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:09:43.764Z level=INFO run=f24c4bac message="all LSPs are disabled"
+timestamp=2026-08-25T00:09:43.765Z level=INFO run=f24c4bac message="all formatters are disabled"
+timestamp=2026-08-25T00:09:43.765Z level=INFO run=f24c4bac message=init
+timestamp=2026-08-25T00:09:45.356Z level=INFO run=666235c0 message="creating instance" directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:45.358Z level=INFO run=666235c0 message=fromDirectory directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:46.057Z level=INFO run=666235c0 message=bootstrapping directory="C:\\Users\\David\\opencode-cicada"
+timestamp=2026-08-25T00:09:46.080Z level=INFO run=666235c0 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\config.json"
+timestamp=2026-08-25T00:09:46.095Z level=INFO run=666235c0 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:09:46.113Z level=INFO run=666235c0 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:45.161Z level=INFO run=24cd3f75 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.json"
+timestamp=2026-08-25T00:09:45.181Z level=INFO run=24cd3f75 message=loading path="C:\\Users\\David\\minimax-agents\\.minimax-opencode\\config\\opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:45.264Z level=INFO run=24cd3f75 message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.json"
+timestamp=2026-08-25T00:09:45.266Z level=INFO run=24cd3f75 message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:45.396Z level=INFO run=24cd3f75 message="all LSPs are disabled"
+timestamp=2026-08-25T00:09:45.398Z level=INFO run=24cd3f75 message="all formatters are disabled"
+timestamp=2026-08-25T00:09:45.398Z level=INFO run=24cd3f75 message=init
+timestamp=2026-08-25T00:09:46.227Z level=INFO run=f24c4bac message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:46.251Z level=INFO run=f24c4bac message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:46.239Z level=INFO run=666235c0 message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.json"
+timestamp=2026-08-25T00:09:46.251Z level=INFO run=666235c0 message=loading path="C:\\Users\\David\\opencode-cicada\\.opencode\\opencode.jsonc"
+timestamp=2026-08-25T00:09:46.399Z level=INFO run=666235c0 message="all LSPs are disabled"
+timestamp=2026-08-25T00:09:46.402Z level=INFO run=666235c0 message="all formatters are disabled"
+timestamp=2026-08-25T00:09:46.402Z level=INFO run=666235c0 message=init
+timestamp=2026-08-25T00:09:48.008Z level=INFO run=f24c4bac message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:48.543Z level=INFO run=24cd3f75 message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:48.554Z level=INFO run=24cd3f75 message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:48.368Z level=INFO run=f24c4bac message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:09:48.626Z level=INFO run=f24c4bac message=init count=3
+timestamp=2026-08-25T00:09:49.447Z level=INFO run=666235c0 message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:49.459Z level=INFO run=666235c0 message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:49.745Z level=INFO run=24cd3f75 message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:49.103Z level=INFO run=f24c4bac message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:49.110Z level=INFO run=f24c4bac message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:50.631Z level=INFO run=666235c0 message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:50.077Z level=INFO run=24cd3f75 message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:09:50.364Z level=INFO run=24cd3f75 message=init count=3
+timestamp=2026-08-25T00:09:50.882Z level=INFO run=24cd3f75 message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:50.899Z level=INFO run=24cd3f75 message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:50.985Z level=INFO run=666235c0 message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:09:51.295Z level=INFO run=666235c0 message=init count=3
+timestamp=2026-08-25T00:09:51.845Z level=INFO run=666235c0 message="watcher backend" directory="C:\\Users\\David\\opencode-cicada" platform=win32 backend=windows
+timestamp=2026-08-25T00:09:51.862Z level=INFO run=666235c0 message="project copy refresh started" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d
+timestamp=2026-08-25T00:09:52.179Z level=INFO run=24cd3f75 message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:50.303Z level=INFO run=f24c4bac message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:50.560Z level=INFO run=f24c4bac message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:09:52.474Z level=INFO run=24cd3f75 message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:09:52.920Z level=INFO run=666235c0 message="project copy refresh done" projectID=012780c4098d08caa4ea8c479ed0a4690489f38d updated=[] removed=[]
+timestamp=2026-08-25T00:09:53.162Z level=INFO run=666235c0 message="booting location services" directory="C:\\Users\\David\\opencode-cicada" workspaceID=undefined
+timestamp=2026-08-25T00:18:30.101Z level=INFO run=42e45ead message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-25T00:18:30.109Z level=INFO run=42e45ead message="project copy refresh started" projectID=global
+timestamp=2026-08-25T00:18:30.111Z level=INFO run=42e45ead message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-25T00:18:30.346Z level=INFO run=42e45ead message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined
+timestamp=2026-08-25T00:18:30.663Z level=INFO run=fdcd1a4e message="watcher backend" directory="C:\\Users\\David\\minimax-agents" platform=win32 backend=windows
+timestamp=2026-08-25T00:18:30.671Z level=INFO run=fdcd1a4e message="project copy refresh started" projectID=global
+timestamp=2026-08-25T00:18:30.673Z level=INFO run=fdcd1a4e message="project copy refresh done" projectID=global updated=[] removed=[]
+timestamp=2026-08-25T00:18:30.951Z level=INFO run=fdcd1a4e message="booting location services" directory="C:\\Users\\David\\minimax-agents" workspaceID=undefined

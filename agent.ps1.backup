@@ -1,0 +1,105 @@
+﻿param(
+    [Parameter(Mandatory=$true)]
+    [string]$Project,
+
+    [ValidateRange(1,3)]
+    [int]$Workers = 1,
+
+    [int]$WorkerId = 0
+)
+
+$ErrorActionPreference = "Stop"
+
+# ------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------
+
+$Project = (Resolve-Path $Project).Path
+$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# Isolated OpenCode environment for the MiniMax agent system.
+$OpenCodeHome = Join-Path $Root ".minimax-opencode"
+
+# ------------------------------------------------------------
+# Worker process
+# ------------------------------------------------------------
+
+if ($WorkerId -gt 0) {
+
+    $env:HOME = $OpenCodeHome
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host " MiniMax Worker $WorkerId" -ForegroundColor Cyan
+    Write-Host " Model:   MiniMax M2.7" -ForegroundColor White
+    Write-Host " Project: $Project" -ForegroundColor White
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    Set-Location $Project
+
+    # Start an independent OpenCode session.
+    & opencode $Project
+
+    exit $LASTEXITCODE
+}
+
+# ------------------------------------------------------------
+# Parent launcher
+# ------------------------------------------------------------
+
+if (-not (Test-Path $Project -PathType Container)) {
+    Write-Error "Project directory does not exist: $Project"
+    exit 1
+}
+
+if (-not (Get-Command wt.exe -ErrorAction SilentlyContinue)) {
+    Write-Error "Windows Terminal (wt.exe) was not found."
+    exit 1
+}
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host " MiniMax Agent Pool" -ForegroundColor Cyan
+Write-Host " Model:   MiniMax M2.7" -ForegroundColor White
+Write-Host " Project: $Project" -ForegroundColor White
+Write-Host " Workers: $Workers" -ForegroundColor White
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Build the command for each worker.
+$scriptPath = (Resolve-Path $MyInvocation.MyCommand.Path).Path
+
+# Escape paths for PowerShell embedded inside wt.exe.
+$escapedScript = $scriptPath.Replace("'", "''")
+$escapedProject = $Project.Replace("'", "''")
+
+# First tab: create a new Windows Terminal window.
+$firstCommand = @"
+powershell.exe -NoExit -ExecutionPolicy Bypass -Command "& '$escapedScript' -Project '$escapedProject' -Workers 1 -WorkerId 1"
+"@
+
+& wt.exe new-tab `
+    --title "MiniMax Worker 1" `
+    powershell.exe -NoExit -ExecutionPolicy Bypass -Command "& '$escapedScript' -Project '$escapedProject' -Workers 1 -WorkerId 1"
+
+# Remaining workers: add tabs to the same Windows Terminal window.
+for ($i = 2; $i -le $Workers; $i++) {
+
+    Start-Sleep -Milliseconds 500
+
+    & wt.exe -w 0 new-tab `
+        --title "MiniMax Worker $i" `
+        powershell.exe -NoExit -ExecutionPolicy Bypass -Command "& '$escapedScript' -Project '$escapedProject' -Workers 1 -WorkerId $i"
+}
+
+# ------------------------------------------------------------
+# Dashboard tab
+# ------------------------------------------------------------
+
+Start-Sleep -Milliseconds 500
+
+& wt.exe -w 0 new-tab `
+    --title "CICADA Dashboard" `
+    powershell.exe -NoExit -ExecutionPolicy Bypass -Command "Write-Host ''; Write-Host '========================================' -ForegroundColor Red; Write-Host ' CICADA DASHBOARD' -ForegroundColor Red; Write-Host '========================================' -ForegroundColor Red; Write-Host ''; Write-Host ' Project: $escapedProject'; Write-Host ' Workers: $Workers'; Write-Host ''; Write-Host ' Dashboard interface coming next.' -ForegroundColor Yellow; Write-Host ''"
+

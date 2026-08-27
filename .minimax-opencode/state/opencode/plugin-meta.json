@@ -1,0 +1,14 @@
+{
+  "tui-smoke": {
+    "id": "tui-smoke",
+    "source": "file",
+    "spec": "file:///C:/Users/David/opencode-cicada/.opencode/plugins/tui-smoke.tsx",
+    "target": "file:///C:/Users/David/opencode-cicada/.opencode/plugins/tui-smoke.tsx",
+    "modified": 1787017643619,
+    "first_time": 1787616589401,
+    "last_time": 1787616591943,
+    "time_changed": 1787616589401,
+    "load_count": 3,
+    "fingerprint": "file:///C:/Users/David/opencode-cicada/.opencode/plugins/tui-smoke.tsx|1787017643619"
+  }
+}
