@@ -7,7 +7,7 @@
 # ============================================================================
 [CmdletBinding()]
 param(
-    [ValidateSet("parallel","unsupervised","idea","inspect","pi","plan","tokeniser","debulk","getskills","execute","consult", "overseer")]
+    [ValidateSet("parallel","unsupervised","idea","inspect","pi","plan","tokeniser","debulk","getskills","execute","consult", "overseer", "fleet")]
     [string]$Mode,
     [string]$Project,
     [string]$Objective,
@@ -38,7 +38,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 if (-not $Mode) {
-    $mi = Show-CicadaMenu -Title "Select mode" -Options @("Parallel / Interactive (worker fleet)", "Unsupervised (autonomous loop)", "Idea (rough sentence -> product)", "Inspect (state of a project + what is next)", "SSH / Pi operator (one worker on your Raspberry Pi)", "Plan (inspection -> actionable plan file)", "Tokeniser (big idea -> lean executable prompt)", "Debulk skill (shrink a skill playbook)", "Get skills (browse + install from marketplaces)", "Execute plan (run a plan file directly, no re-planning)", "Consult (two models level up an idea)","Overseer (telegram manager for the fleet)", "Quit")
+    $mi = Show-CicadaMenu -Title "Select mode" -Options @("Parallel / Interactive (worker fleet)", "Unsupervised (autonomous loop)", "Idea (rough sentence -> product)", "Inspect (state of a project + what is next)", "SSH / Pi operator (one worker on your Raspberry Pi)", "Plan (inspection -> actionable plan file)", "Tokeniser (big idea -> lean executable prompt)", "Debulk skill (shrink a skill playbook)", "Get skills (browse + install from marketplaces)", "Execute plan (run a plan file directly, no re-planning)", "Consult (two models level up an idea)","Overseer (telegram manager for the fleet)", "Fleet up (overseer auto-detect + Telegram control of running workers)", "Quit")
     if ($mi -eq 0) { $Mode = "parallel" }
     elseif ($mi -eq 1) { $Mode = "unsupervised" }
     elseif ($mi -eq 2) { $Mode = "idea" }
@@ -51,7 +51,25 @@ if (-not $Mode) {
     elseif ($mi -eq 9) { $Mode = "execute" }
     elseif ($mi -eq 10) { $Mode = "consult" }
     elseif ($mi -eq 11) { $Mode = "overseer" }
+    elseif ($mi -eq 12) { $Mode = "fleet" }
     else { exit 0 }
+}
+
+# ---------------- fleet: Telegram overseer for hand-started consoles ----------------
+if ($Mode -eq "fleet") {
+    $fleetScript = Join-Path $Root "fleet.ps1"
+    if (-not (Test-Path $fleetScript)) { Write-Error "fleet.ps1 not found in the CICADA root - copy it there first."; exit 1 }
+    $sub = Show-CicadaMenu -Title "Fleet launch" -Options @("Overseer only - detect the consoles I started myself", "Full launch - open consoles from fleet.json + overseer") -Default 0
+    if ($sub -eq 0) {
+        $expIn = (Read-Host "Workers to wait for before posting the roster [4]").Trim()
+        $exp = 4
+        $parsed = 0
+        if ($expIn -and [int]::TryParse($expIn, [ref]$parsed)) { $exp = $parsed }
+        & $fleetScript -OverseerOnly -ExpectWorkers $exp
+        exit $LASTEXITCODE
+    }
+    & $fleetScript
+    exit $LASTEXITCODE
 }
 
 if (-not $Project -and $Mode -ne "pi" -and $Mode -ne "debulk" -and $Mode -ne "getskills" -and $Mode -ne "overseer") { $Project = (Read-Host "Project (e.g. C:\Users\David\my-project)").Trim() }

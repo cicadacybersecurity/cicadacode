@@ -1,3 +1,10 @@
 manager/secrets.json
 state/logs/
 state/runs/
+*.bak
+*.bak2
+*.backup
+*.pre-*
+*.before-*
+*.corrupt-*
+state/

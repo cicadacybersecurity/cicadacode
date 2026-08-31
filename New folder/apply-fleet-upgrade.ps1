@@ -1,0 +1,472 @@
+#Requires -Version 5.1
+<#
+apply-fleet-upgrade.ps1 - make the 4-console + overseer workflow one command. v3
+Run once from the CICADA root (folder containing agent.ps1):
+
+    powershell -ExecutionPolicy Bypass -File .\apply-fleet-upgrade.ps1
+
+Fixes in manager\overseer.ps1:
+  1. adoption bug: every console numbers its worker "worker-1" and the overseer
+     deduped by worker id, so only ONE of your four workers was ever adopted.
+  2. /detect replay storm: the slash-command handler relayed a summary for EVERY
+     historical assistant message instead of baselining. Now it primes quietly.
+  3. -AutoDetect (-ExpectWorkers N, -AutoDetectTimeoutSec): the overseer waits
+     for consoles to boot, adopts the fleet, baselines, posts the roster - you
+     never type /detect by hand again.
+  4. overseer window title: "CICADA overseer (Telegram)".
+  5. summary format: worker replies arrive as plain-English CHANGED / NEXT /
+     NEEDS YOU / SUGGESTION - the suggestion is a message you can send back
+     verbatim (the existing 'yes' reply already does exactly that).
+  6. DETECTION REWORK (the "5 workers when I have 3" fix): full replacement of
+     Find-LiveWorkers, anchored on the function's structural edges so it does
+     not care about internal drift. A worker's identity is its SESSION - the
+     same session listed on two ports is adopted once (that was your Alpha+Bravo
+     duplicate); zombie opencode servers orphaned by closed console windows are
+     skipped; sessions idle over -MaxSessionAgeHours (default 6) are ignored.
+
+Fix in manager\console.ps1:
+  - each console window titles itself "CICADA console - <project>".
+
+Add to agent.ps1:
+  - "Fleet up" menu entry (and -Mode fleet): overseer-only auto-detect for
+    consoles you started yourself, or full launch from fleet.json.
+
+Same safety model as apply-hardening.ps1: git baseline first, anchors verified
+(exactly one match each), syntax check before writing, idempotent.
+Rollback:  git checkout -- manager agent.ps1
+
+v3: the detection rework replaces the whole Find-LiveWorkers function via its
+    structural boundaries instead of matching an interior block - immune to
+    drift between the zip and your live copy.
+v3.1: the orphan/zombie check no longer SKIPS - opencode's process tree makes
+    parentage unreliable and it was filtering out live workers. Orphans are now
+    just tagged [zombie-server] in the roster; dedupe-by-session and the stale
+    filter still keep corpses out.
+#>
+[CmdletBinding()]
+param([switch]$SkipGit)
+
+$ErrorActionPreference = "Stop"
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+if (-not (Test-Path (Join-Path $root "manager\overseer.ps1")) -or
+    -not (Test-Path (Join-Path $root "manager\console.ps1")) -or
+    -not (Test-Path (Join-Path $root "agent.ps1"))) {
+    Write-Error "Run me from the CICADA root (the folder containing agent.ps1)."
+    exit 1
+}
+
+# ---------------- file IO (preserve UTF-8 BOM / no-BOM) ----------------
+
+function Get-FileText([string]$path) {
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $bom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+    $enc = New-Object System.Text.UTF8Encoding($false, $false)
+    if ($bom) { $text = $enc.GetString($bytes, 3, $bytes.Length - 3) }
+    else      { $text = $enc.GetString($bytes, 0, $bytes.Length) }
+    return @($text, $bom)
+}
+
+function Set-FileText([string]$path, [string]$text, [bool]$bom) {
+    $enc = New-Object System.Text.UTF8Encoding($bom, $false)
+    [System.IO.File]::WriteAllText($path, $text, $enc)
+}
+
+# ---------------- git baseline (native git runs under Continue: PS 5.1 turns
+# harmless git stderr warnings into NativeCommandError under -Stop) ------------
+
+$script:GitBaselineOk = $false
+
+if (-not $SkipGit) {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) {
+        Write-Host "git not found - skipping baseline snapshot (rollback will be manual)." -ForegroundColor Yellow
+    } else {
+        Push-Location $root
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            if (-not (Test-Path (Join-Path $root ".git"))) {
+                & git init 2>&1 | Out-Null
+                Write-Host "git: initialized repository" -ForegroundColor Green
+            }
+            & git config user.email 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                & git config user.email "cicada@localhost" 2>&1 | Out-Null
+                & git config user.name "cicada" 2>&1 | Out-Null
+                Write-Host "git: set local identity (cicada@localhost)" -ForegroundColor DarkGray
+            }
+            & git add -A 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host ("git: add failed (exit " + $LASTEXITCODE + ") - patches will still apply") -ForegroundColor Yellow
+            } else {
+                $porc = & git status --porcelain 2>$null | Out-String
+                if ($porc.Trim()) {
+                    & git commit --quiet -m "baseline: pre-fleet-upgrade snapshot" 2>&1 | Out-Null
+                    if ($LASTEXITCODE -eq 0) {
+                        $script:GitBaselineOk = $true
+                        Write-Host "git: baseline committed (rollback: git checkout -- manager)" -ForegroundColor Green
+                    } else {
+                        Write-Host ("git: commit failed (exit " + $LASTEXITCODE + ") - patches will still apply") -ForegroundColor Yellow
+                    }
+                } else {
+                    $script:GitBaselineOk = $true
+                    Write-Host "git: working tree already clean - baseline exists" -ForegroundColor DarkGray
+                }
+            }
+        } finally {
+            $ErrorActionPreference = $oldEAP
+            Pop-Location
+        }
+    }
+}
+
+# ---------------- patch definitions ----------------
+
+$o2Text = @'
+    # fleet fix: multiple consoles each number their worker "worker-1" - key by
+    # port (one worker per port), then renumber in detection order so callsigns
+    # Alpha, Bravo, Charlie... are unique across the whole fleet.
+    $byPort = @($found | Sort-Object { [string]$_.url } -Unique)
+    $byPort = @($byPort | Sort-Object { [int]([uri]([string]$_.url)).Port })
+    $seq = 0
+    foreach ($fw in $byPort) {
+        $seq++
+        $fw.id = [string]$seq
+        $fw.name = (Get-Callsign $fw.id)
+    }
+    return $byPort
+'@
+
+$o3Text = @'
+            # fleet fix: prime with the watch loop's hash format so adoption is
+            # silent - only genuinely new replies relay from here on.
+            foreach ($wk in @($workers)) {
+                if (-not $wk.session) { continue }
+                try {
+                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+                    $pLast = $null
+                    foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+                    if ($pLast) {
+                        $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                        $pText = ($pParts -join "`n").Trim()
+                        if ($pText) {
+                            $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                            $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                        }
+                    }
+                } catch {}
+            }
+'@
+
+$o4Text = @'
+# fleet: optional startup auto-detect - wait for consoles to boot, adopt every
+# live worker, baseline quietly (no history replay), post the roster to Telegram.
+if ($AutoDetect) {
+    $deadline = (Get-Date).AddSeconds($AutoDetectTimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $detectedWorkers = Find-LiveWorkers
+        $workers = @($detectedWorkers)
+        if ($ExpectWorkers -gt 0 -and $workers.Count -ge $ExpectWorkers) { break }
+        if ($ExpectWorkers -le 0 -and $workers.Count -gt 0) { break }
+        Start-Sleep -Seconds ([Math]::Max(2, $PollSeconds))
+    }
+    $lastHash = @{}
+    foreach ($wk in @($workers)) {
+        if (-not $wk.session) { continue }
+        try {
+            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+            $pLast = $null
+            foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+            if ($pLast) {
+                $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                $pText = ($pParts -join "`n").Trim()
+                if ($pText) {
+                    $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                    $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                }
+            }
+        } catch {}
+    }
+    if ($workers.Count -eq 0) {
+        Send-OverseerTelegram "auto-detect: no live workers found yet - a worker appears once its console sends its first task; /detect anytime to adopt later ones."
+    } else {
+        Send-OverseerTelegram ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers))
+    }
+}
+
+
+'@
+
+$o5Text = @'
+try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
+
+'@
+
+$o6Text = @'
+$sys = "You rewrite a worker agent's latest reply for the operator's Telegram chat. Plain English, short labeled lines, no jargon, no markdown, no filler. The worker follows a plan broken into phases; its reply says what it did and what comes next. Output EXACTLY these lines, in this order, nothing else: CHANGED: one or two plain sentences - what the worker actually did, built, or fixed this round; name real files, commands, or results when the reply mentions them. NEXT: what is left to do - the next phase or remaining plan items; if the worker is blocked or waiting for direction, say what it is waiting for; if the plan is finished, say plan complete. NEEDS YOU: include this line ONLY when the worker is blocked, errored, or needs a decision - one plain sentence on exactly what is needed from the operator. SUGGESTION: the single most useful short message the operator could send back verbatim, e.g. implement phase 14, or run the tests, or fix the failing validation; write exactly none needed if there is nothing useful to send. Never invent facts, progress, or blockers. If the reply is only a question or acknowledgement, CHANGED says so, NEXT says what you can tell, SUGGESTION answers it or says none needed.";
+'@
+
+$a4Text = @'
+# ---------------- fleet: Telegram overseer for hand-started consoles ----------------
+if ($Mode -eq "fleet") {
+    $fleetScript = Join-Path $Root "fleet.ps1"
+    if (-not (Test-Path $fleetScript)) { Write-Error "fleet.ps1 not found in the CICADA root - copy it there first."; exit 1 }
+    $sub = Show-CicadaMenu -Title "Fleet launch" -Options @("Overseer only - detect the consoles I started myself", "Full launch - open consoles from fleet.json + overseer") -Default 0
+    if ($sub -eq 0) {
+        $expIn = (Read-Host "Workers to wait for before posting the roster [4]").Trim()
+        $exp = 4
+        $parsed = 0
+        if ($expIn -and [int]::TryParse($expIn, [ref]$parsed)) { $exp = $parsed }
+        & $fleetScript -OverseerOnly -ExpectWorkers $exp
+        exit $LASTEXITCODE
+    }
+    & $fleetScript
+    exit $LASTEXITCODE
+}
+
+
+'@
+
+$o8Text = @'
+function Find-LiveWorkers {
+    # fleet fix v2: opencode stores sessions per PROJECT, so every serve instance
+    # of one project lists the same sessions. A worker's identity is its SESSION,
+    # not its port - the same session on two ports is one worker (first port
+    # wins). Orphaned serves (console window closed, server still listening) and
+    # sessions idle over $MaxSessionAgeHours are skipped.
+    $found = @()
+
+    $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.LocalAddress -eq "127.0.0.1" -and
+            $_.LocalPort -ge 4311 -and
+            $_.LocalPort -le 4320
+        } |
+        Sort-Object LocalPort -Unique
+
+    foreach ($conn in @($ports)) {
+        $port = [int]$conn.LocalPort
+        $url = "http://127.0.0.1:" + $port
+
+        # zombie check: a serve process whose parent console is gone is a corpse
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) {
+                Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
+                continue
+            }
+        }
+
+        try {
+            $sessions = Invoke-RestMethod `
+                -Method Get `
+                -Uri ($url + "/session") `
+                -TimeoutSec 5
+
+            $workerSessions = @(
+                $sessions |
+                Where-Object {
+                    [string]$_.title -match '^worker-\d+$'
+                } |
+                Sort-Object { [long]$_.time.updated } -Descending
+            )
+
+            foreach ($sess in $workerSessions) {
+                $ageHours = 999
+                try {
+                    $updMs = [long]$sess.time.updated
+                    if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
+                    $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
+                } catch {}
+                if ($ageHours -gt $MaxSessionAgeHours) {
+                    Write-Host ("  detect: skipping stale session on port " + $port + " (idle " + [math]::Round($ageHours, 1) + "h - raise -MaxSessionAgeHours to adopt it)") -ForegroundColor DarkGray
+                    continue
+                }
+                $found += @{
+                    id = "pending"
+                    name = ""
+                    url = $url
+                    session = [string]$sess.id
+                    project = [string]$sess.directory
+                }
+            }
+        }
+        catch {}
+    }
+
+    # dedupe by session id; ports were scanned ascending, so first port wins and
+    # callsigns follow port order
+    $seen = @{}
+    $bySession = @()
+    foreach ($fw in $found) {
+        $sid = [string]$fw.session
+        if ($seen.ContainsKey($sid)) { continue }
+        $seen[$sid] = $true
+        $bySession += $fw
+    }
+    $seq = 0
+    foreach ($fw in $bySession) {
+        $seq++
+        $fw.id = [string]$seq
+        $fw.name = (Get-Callsign $fw.id)
+    }
+    return $bySession
+}
+
+'@
+
+$o10aText = @'
+        # orphaned serve? note it, never skip it: opencode's process tree makes
+        # parentage unreliable, and a missed live worker is worse than an
+        # adopted zombie (the stale filter below still hides old corpses).
+        $orphanNote = ""
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) { $orphanNote = " [zombie-server]" }
+        }
+
+'@
+
+$c1Text = @'
+try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
+'@
+
+$patches = @(
+    @{ File = "manager\overseer.ps1"; Name = "overseer: -AutoDetect params"
+       Pattern = '    \[switch\]\$Yes(?=\r?\n\))'
+       Mode = "After"; Marker = 'AutoDetectTimeoutSec'
+       Text = ",`r`n    [switch]`$AutoDetect,`r`n    [int]`$ExpectWorkers = 0,`r`n    [int]`$AutoDetectTimeoutSec = 180" },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: adopt one worker per port, renumber by detection order"
+       Pattern = '    return @\(\r?\n        \$found \|\r?\n        Sort-Object \{ \[int\]\$_\.id \} -Unique\r?\n    \)'
+       Mode = "Replace"; Marker = 'fleet fix: multiple consoles'; Text = $o2Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: /detect baselines instead of replaying history"
+       Pattern = '            # Baseline the current assistant response for every\r?\n            # adopted worker\. This prevents stale session output\r?\n            # from being immediately treated as a new reply\.\r?\n            \$lastHash = @\{\}\r?\n'
+       Mode = "After"; Marker = 'fleet fix: prime with the watch loop'; Text = ("`r`n" + $o3Text) },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: window title"
+       Pattern = 'Write-Host \("overseer live'
+       Mode = "Before"; Marker = 'CICADA overseer (Telegram)'; Text = $o5Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: startup auto-detect"
+       Pattern = '\$workers = @\(\)\r?\n\r?\n(?=while \(\$true\) \{)'
+       Mode = "After"; Marker = 'fleet: optional startup auto-detect'; Text = $o4Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: plain-English summary format (CHANGED/NEXT/NEEDS YOU/SUGGESTION)"
+       Pattern = '\$sys = "You are the concise operational briefing layer[^\r\n]*";'
+       Mode = "Replace"; Marker = 'You rewrite a worker agent'; Text = $o6Text },
+
+    @{ File = "manager\console.ps1"; Name = "console: window title per project"
+       Pattern = '\$Project = \(Resolve-Path \$Project\)\.Path\r?\n'
+       Mode = "After"; Marker = 'CICADA console - '; Text = $c1Text },
+
+    @{ File = "agent.ps1"; Name = "agent: -Mode fleet in ValidateSet"
+       Pattern = '"consult", "overseer"'
+       Mode = "After"; Marker = '"overseer", "fleet"'; Text = ', "fleet"' },
+
+    @{ File = "agent.ps1"; Name = "agent: Fleet up menu entry"
+       Pattern = '"Overseer \(telegram manager for the fleet\)"'
+       Mode = "After"; Marker = 'Fleet up (overseer auto-detect'
+       Text = ', "Fleet up (overseer auto-detect + Telegram control of running workers)"' },
+
+    @{ File = "agent.ps1"; Name = "agent: menu branch for fleet"
+       Pattern = '    elseif \(\$mi -eq 11\) \{ \$Mode = "overseer" \}'
+       Mode = "After"; Marker = '$mi -eq 12'
+       Text = "`r`n    elseif (`$mi -eq 12) { `$Mode = `"fleet`" }" },
+
+    @{ File = "agent.ps1"; Name = "agent: fleet handler (before the project prompt)"
+       Pattern = 'if \(-not \$Project -and \$Mode -ne "pi" -and \$Mode -ne "debulk" -and \$Mode -ne "getskills" -and \$Mode -ne "overseer"\) \{ \$Project = \(Read-Host "Project \(e\.g\. C:\\Users\\David\\my-project\)"\)\.Trim\(\) \}'
+       Mode = "Before"; Marker = 'fleet: Telegram overseer for hand-started consoles'; Text = $a4Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: -MaxSessionAgeHours param"
+       Pattern = '    \[int\]\$AutoDetectTimeoutSec = 180'
+       Mode = "After"; Marker = 'MaxSessionAgeHours'
+       Text = ",`r`n    [double]`$MaxSessionAgeHours = 6" },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: Find-LiveWorkers full rework (session identity, zombie + stale skip)"
+       Pattern = 'function Find-LiveWorkers \{[\s\S]*?\r?\n\}\r?\n(?=\s*function Resolve-WorkerTarget)'
+       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: orphan check becomes advisory (was skipping live workers)"
+       Pattern = '        # zombie check: a serve process whose parent console is gone is a corpse[\s\S]*?            \}\r?\n        \}\r?\n'
+       Mode = "Replace"; Marker = 'zombie-server'; Text = $o10aText },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: roster annotates zombie servers"
+       Pattern = '                    project = \[string\]\$sess\.directory'
+       Mode = "Replace"; Marker = 'project = ([string]$sess.directory + $orphanNote)'
+       Text = 'project = ([string]$sess.directory + $orphanNote)' }
+)
+
+# ---------------- apply (in memory; write only if everything verifies) --------
+
+$texts = @{}
+$boms  = @{}
+foreach ($f in ($patches.File | Select-Object -Unique)) {
+    $p = Join-Path $root $f
+    $r = Get-FileText $p
+    $texts[$f] = $r[0]
+    $boms[$f]  = [bool]$r[1]
+}
+
+$failures = @()
+$applied  = @()
+$skipped  = @()
+
+foreach ($p in $patches) {
+    $f = $p.File
+    if ($texts[$f].Contains($p.Marker)) { $skipped += $p.Name; continue }
+    $hits = [regex]::Matches($texts[$f], $p.Pattern).Count
+    if ($hits -ne 1) {
+        $failures += ($p.Name + ": anchor matched " + $hits + " time(s), expected exactly 1 - " + $f + " differs from the reviewed version; NOT writing anything")
+        continue
+    }
+    $Mode = $p.Mode
+    $Text = ($p.Text -replace "`r?`n", "`r`n")
+    $ev = [System.Text.RegularExpressions.MatchEvaluator]{ param($m) if ($Mode -eq "Replace") { $Text } elseif ($Mode -eq "After") { $m.Value + $Text } else { $Text + $m.Value } }
+    $texts[$f] = [regex]::Replace($texts[$f], $p.Pattern, $ev)
+    $applied += $p.Name
+}
+
+if ($failures.Count -gt 0) {
+    Write-Host ""
+    Write-Host "PATCH ABORTED - no files were modified:" -ForegroundColor Red
+    foreach ($x in $failures) { Write-Host ("  " + $x) -ForegroundColor Red }
+    exit 1
+}
+
+$syntaxBad = @()
+foreach ($f in $texts.Keys) {
+    $parseErrors = $null
+    [void][System.Management.Automation.PSParser]::Tokenize($texts[$f], [ref]$parseErrors)
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+        $syntaxBad += ($f + ": " + $parseErrors.Count + " parse error(s), first: " + $parseErrors[0].Message)
+    }
+}
+if ($syntaxBad.Count -gt 0) {
+    Write-Host "PATCH ABORTED - patched text failed PowerShell syntax check; no files were modified:" -ForegroundColor Red
+    foreach ($x in $syntaxBad) { Write-Host ("  " + $x) -ForegroundColor Red }
+    exit 1
+}
+
+foreach ($f in $texts.Keys) { Set-FileText (Join-Path $root $f) $texts[$f] $boms[$f] }
+
+Write-Host ""
+if ($skipped.Count -gt 0) { foreach ($s in $skipped) { Write-Host ("  skip (already applied): " + $s) -ForegroundColor DarkGray } }
+foreach ($a in $applied) { Write-Host ("  patched: " + $a) -ForegroundColor Green }
+Write-Host ""
+Write-Host "Fleet upgrade complete." -ForegroundColor Green
+Write-Host "  overseer.ps1 - one worker per port, quiet /detect, -AutoDetect, window title, plain-English reports"
+Write-Host "  overseer.ps1 - detection rework: one session = one worker, zombie + stale sessions skipped"
+Write-Host "  console.ps1  - window titled per project"
+Write-Host "  agent.ps1    - 'Fleet up' menu entry (and -Mode fleet)"
+Write-Host ""
+Write-Host "Next: .\agent.ps1 and pick 'Fleet up' - or run .\fleet.ps1 directly" -ForegroundColor Cyan
+Write-Host ""
+if ($script:GitBaselineOk) {
+    Write-Host "Review:   git diff manager agent.ps1"
+    Write-Host "Rollback: git checkout -- manager agent.ps1" -ForegroundColor DarkGray
+}

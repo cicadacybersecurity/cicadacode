@@ -25,7 +25,8 @@ param(
     [switch]$NoGit,
     [int]$CallTimeoutSec = 1800,
     [int]$ValidationTimeoutSec = 120,
-    [string]$RunId
+    [string]$RunId,
+    [switch]$AllowSelfModify
 )
 
 $ErrorActionPreference = "Continue"
@@ -42,6 +43,13 @@ Repair-CicadaStaleRuns
 if (-not (Test-Path $Project -PathType Container)) { Write-Error "Project not found: $Project"; exit 1 }
 $Project = (Resolve-Path $Project).Path
 
+# hardening: never run the fleet against the CICADA installation itself without
+# an explicit opt-in - self-patching runs have corrupted manager scripts before.
+$CicadaRoot = Split-Path -Parent $PSScriptRoot
+if ($Project -eq $CicadaRoot -and -not $AllowSelfModify) {
+    Write-Error "Project is the CICADA installation itself. Self-patching has corrupted manager scripts before (see the *.corrupt / *.pre-* backups). Snapshot with git, then re-run with -AllowSelfModify to override."
+    exit 1
+}
 # ---------- prompt contracts ----------
 
 function Get-PlanPrompt {
@@ -213,11 +221,40 @@ while ($true) {
 }
 }
 
+# hardening: gate commands come from planner/builder output and run via
+# Invoke-Expression on the host with your privileges. Validation must be
+# read-only and local: deny mutation, network, and system verbs at command
+# boundaries (start of string, or right after a pipe/semicolon/ampersand),
+# plus any output redirect that would write a file.
+function Test-CicadaGateSafe([string]$Command) {
+    $c = $Command.ToLower()
+    $b = '(^|[|;&]\s*)\s*'
+    $checks = @(
+        # mutation / system / network / code-execution verbs at a command boundary
+        ($b + '(remove-item|del|erase|rmdir|rd|format-volume|mkfs|dd|shutdown|restart-computer|stop-computer|stop-process|taskkill|kill|set-content|out-file|add-content|clear-content|tee-object|tee|new-item|mkdir|md|copy-item|copy|xcopy|robocopy|move-item|move|rename-item|ren|invoke-webrequest|invoke-restmethod|curl|wget|start-bitstransfer|ssh|scp|ftp|reg|takeown|icacls|attrib|cipher|invoke-expression|iex|start-process|msiexec|choco|winget|pip3?)(?=[\s.]|$)'),
+        # package-manager / vcs / service / dotnet mutations
+        ($b + '(npm|yarn|pnpm)\s+(install|uninstall|remove|publish|add|ci|i)(?=[\s]|$)'),
+        ($b + 'git\s+(push|reset|clean|commit|checkout|rebase|merge|rm)(?=[\s]|$)'),
+        ($b + 'net\s+(user|localgroup|share|start|stop)(?=[\s]|$)'),
+        ($b + 'dotnet\s+(add|remove|publish|nuget)(?=[\s]|$)'),
+        # output redirect that writes a file (2>&1 stays allowed)
+        '(?<![\d>&])>\s*[~\.\w\\]'
+    )
+    foreach ($re in $checks) {
+        $m = [regex]::Match($c, $re)
+        if ($m.Success) { return $m.Value.Trim() }
+    }
+    return $null
+}
+
 # ---------- deterministic validation gate (no model) ----------
 
 function Invoke-Validation([string]$Command) {
     if (-not $Command) { return $null }
-    $job = Start-Job -ScriptBlock {
+    $denyHit = Test-CicadaGateSafe $Command
+    if ($denyHit) {
+        return @{ code = -1; output = ("gate blocked by safety denylist (matched '" + $denyHit + "'); validation commands must be read-only and local - re-run the check without mutation, network, or system verbs") }
+    }    $job = Start-Job -ScriptBlock {
         param($dir, $cmd)
         Set-Location $dir
         $code = $null

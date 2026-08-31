@@ -3,7 +3,11 @@
     [string]$StateFile = "",
     [string]$Model = "minimax/MiniMax-M2.7",
     [int]$PollSeconds = 2,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$AutoDetect,
+    [int]$ExpectWorkers = 0,
+    [int]$AutoDetectTimeoutSec = 180,
+    [double]$MaxSessionAgeHours = 6
 )
 # overseer.ps1 - the Telegram manager for the parallel worker fleet.
 # v5: free-form messages are decoded by the cheap model into actions; v4's
@@ -42,7 +46,7 @@ function Get-OverseerUpdates([long]$offset) {
     } catch { return @() }
 }
 function Invoke-OverseerSummary([string]$workerText, [string]$who) {
-    $sys = "You are the concise operational briefing layer for a multi-agent system. Read the worker response and compress it into exactly three lines: STATE: describe the worker, project, or run itself. Never describe the user, their request, or the conversation. State the concrete answer, current status, progress, result, error, blocker, or outcome. DECISION: state only a real decision, conclusion, or substantive action taken by the worker; write none for questions, factual answers, acknowledgements, or routine observations. SUGGESTION: only include a next action when the worker explicitly identifies a blocker, unresolved issue, failed result, pending decision, or clearly required follow-up. Otherwise write exactly none needed. Never invent verification steps, commands, recommendations, or extra context. Be universal across coding, research, analysis, planning, execution, debugging, investigation, and general tasks. Preserve concrete details that matter: names, paths, files, commands, numbers, test results, errors, constraints, and conclusions. Do not invent facts, context, motives, progress, decisions, or advice. Do not describe the user or the conversation. Do not turn a simple factual answer into a narrative. Compress aggressively without losing operationally important information. Plain text only. No greetings, filler, repetition, generic recommendations, or footer.";
+    $sys = "You rewrite a worker agent's latest reply for the operator's Telegram chat. Plain English, short labeled lines, no jargon, no markdown, no filler. The worker follows a plan broken into phases; its reply says what it did and what comes next. Output EXACTLY these lines, in this order, nothing else: CHANGED: one or two plain sentences - what the worker actually did, built, or fixed this round; name real files, commands, or results when the reply mentions them. NEXT: what is left to do - the next phase or remaining plan items; if the worker is blocked or waiting for direction, say what it is waiting for; if the plan is finished, say plan complete. NEEDS YOU: include this line ONLY when the worker is blocked, errored, or needs a decision - one plain sentence on exactly what is needed from the operator. SUGGESTION: the single most useful short message the operator could send back verbatim, e.g. implement phase 14, or run the tests, or fix the failing validation; write exactly none needed if there is nothing useful to send. Never invent facts, progress, or blockers. If the reply is only a question or acknowledgement, CHANGED says so, NEXT says what you can tell, SUGGESTION answers it or says none needed.";
     $body = @{ model = ($Model -replace "^minimax/", ""); messages = @(@{ role = "system"; content = $sys }, @{ role = "user"; content = $workerText }); temperature = 0.2; max_tokens = 400 } | ConvertTo-Json -Depth 10
     try {
         $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120
@@ -68,6 +72,7 @@ function Invoke-WorkerInterrupt([string]$url, [string]$session, [string]$advice)
     Send-WorkerText $url $session $wrapped
 }
 function Get-WorkerDoing($wk) {
+    # intent fix v2.1: strip think tags from the tail
     $msgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
     $lastAny = $null; $lastAssistant = $null
     foreach ($mm in @($msgs)) {
@@ -79,7 +84,8 @@ function Get-WorkerDoing($wk) {
     $tail = ""
     if ($lastAssistant) {
         $parts = @($lastAssistant.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
-        $tail = (($parts -join " ") -replace "\s+", " ").Trim()
+        $tail = [regex]::Replace(($parts -join " "), "(?s)<think>.*?</think>", "")
+        $tail = ($tail -replace "\s+", " ").Trim()
         if ($tail.Length -gt 500) { $tail = $tail.Substring(0, 500) + "..." }
     }
     return @{ busy = $busy; tail = $tail }
@@ -145,7 +151,8 @@ function Invoke-WorkerQuery([string]$url, [string]$session, [string]$question, [
     }
 }
 function Invoke-IntentDecode([string]$text, [string]$rosterNames) {
-    $sys = "You are the command decoder for a worker-fleet overseer bot. The operator types free-form instructions. Decode into a JSON object with exactly these keys: action (one of: interrupt, steer, query, doing, status, fleet, detect, none), target (the worker callsign mentioned, or empty string), text (the advice or message to deliver to that worker, or empty string). interrupt = pause a worker mid-work with advice it must take on board while keeping its place. steer = send a worker a new instruction or message. doing = the operator asks what a worker is doing right now. status/fleet = the operator asks about the whole fleet. detect = rescan for workers. none = not a command at all. Live workers: " + $rosterNames + ". Reply with ONLY the JSON object - no markdown fences, no commentary."
+    # intent fix v2.1: steer is the default for worker-bound messages
+    $sys = "You are the command decoder for a worker-fleet overseer bot. The operator types free-form messages about workers identified by callsigns. Decode into a JSON object with exactly these keys: action (one of: interrupt, steer, query, doing, status, fleet, detect, none), target (the worker callsign mentioned, or empty string), text (the message to deliver, or empty string). Rules: steer = the message is FOR the worker to act on - an instruction, a task, or a question the worker itself should answer in its next turn (examples: ask alpha whats next to implement, tell bravo to run the tests, get charlie to fix the gate, alpha do phase 7). Put the operator's actual instruction in text, phrased as a message to the worker, minus the leading callsign/ask/tell phrasing. doing = ONLY a live state check (is X busy right now, what is X mid-way through) - never a question the worker should answer. query = the operator wants YOU to answer from the worker's session history WITHOUT messaging it (what did X finish, why did X fail). Golden rule: if the words could be typed into the worker's own console for it to act on, choose steer; when in doubt between steer and anything else, choose steer. interrupt = only when the operator explicitly wants to abort the worker's current in-flight turn. status/fleet = whole-fleet overview. detect = rescan for workers. none = not about the fleet at all. Live workers: " + $rosterNames + ". Reply with ONLY the JSON object - no markdown fences, no commentary."
     $body = @{ model = ($Model -replace "^minimax/", ""); messages = @(@{ role = "system"; content = $sys }, @{ role = "user"; content = $text }); temperature = 0; max_tokens = 200 } | ConvertTo-Json -Depth 10
     try {
         $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 60
@@ -207,6 +214,14 @@ function Get-NewAssistantMessages {
     return @($found)
 }
 function Find-LiveWorkers {
+    # fleet fix v2.1: opencode stores sessions per PROJECT, so every serve
+    # instance of one project lists the same sessions. A worker's identity is
+    # its SESSION, not its port - the same session on two ports is one worker
+    # (first port wins; callsigns follow ascending port order).
+    # Orphaned serves (console window closed, server still listening) are tagged
+    # [zombie-server] but NEVER skipped: opencode's process tree makes parentage
+    # unreliable, and a missed live worker is worse than an adopted zombie.
+    # Sessions idle over $MaxSessionAgeHours are skipped as stale.
     $found = @()
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
@@ -221,53 +236,65 @@ function Find-LiveWorkers {
         $port = [int]$conn.LocalPort
         $url = "http://127.0.0.1:" + $port
 
+        $orphanNote = ""
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) { $orphanNote = " [zombie-server]" }
+        }
+
         try {
             $sessions = Invoke-RestMethod `
                 -Method Get `
                 -Uri ($url + "/session") `
                 -TimeoutSec 5
 
-            $workerSession = @(
+            $workerSessions = @(
                 $sessions |
                 Where-Object {
                     [string]$_.title -match '^worker-\d+$'
                 } |
-                Sort-Object { [long]$_.time.updated } -Descending |
-                Select-Object -First 1
+                Sort-Object { [long]$_.time.updated } -Descending
             )
 
-            if ($workerSession.Count -eq 0) {
-                continue
-            }
-
-            $sess = $workerSession[0]
-
-            $workerId = (
-                [regex]::Match(
-                    [string]$sess.title,
-                    '^worker-(\d+)$'
-                )
-            ).Groups[1].Value
-
-            if (-not $workerId) {
-                continue
-            }
-
-            $found += @{
-                id = $workerId
-                name = (Get-Callsign $workerId)
-                url = $url
-                session = [string]$sess.id
-                project = [string]$sess.directory
+            foreach ($sess in $workerSessions) {
+                $ageHours = 999
+                try {
+                    $updMs = [long]$sess.time.updated
+                    if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
+                    $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
+                } catch {}
+                if ($ageHours -gt $MaxSessionAgeHours) {
+                    Write-Host ("  detect: skipping stale session on port " + $port + " (idle " + [math]::Round($ageHours, 1) + "h - raise -MaxSessionAgeHours to adopt it)") -ForegroundColor DarkGray
+                    continue
+                }
+                $found += @{
+                    id = "pending"
+                    name = ""
+                    url = $url
+                    session = [string]$sess.id
+                    project = ([string]$sess.directory + $orphanNote)
+                }
             }
         }
         catch {}
     }
 
-    return @(
-        $found |
-        Sort-Object { [int]$_.id } -Unique
-    )
+    $seen = @{}
+    $bySession = @()
+    foreach ($fw in $found) {
+        $sid = [string]$fw.session
+        if ($seen.ContainsKey($sid)) { continue }
+        $seen[$sid] = $true
+        $bySession += $fw
+    }
+    $seq = 0
+    foreach ($fw in $bySession) {
+        $seq++
+        $fw.id = [string]$seq
+        $fw.name = (Get-Callsign $fw.id)
+    }
+    return $bySession
 }
 function Resolve-WorkerTarget([string]$target, $fleet) {
     return ($fleet | Where-Object { $_.id -eq $target -or $_.name -ieq $target } | Select-Object -First 1)
@@ -319,6 +346,7 @@ function Get-FleetRoster($fleet) {
         ($roster -join "`n")
     )
 }
+try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
 Send-OverseerTelegram "overseer online - /detect adopts the fleet; /status /doing <name> /interrupt <name> <advice> work too."
@@ -329,6 +357,41 @@ $lastSuggested = @{}
 $lastRelayedWorker = $null
 $tgOffset = 0
 $workers = @()
+
+# fleet: optional startup auto-detect - wait for consoles to boot, adopt every
+# live worker, baseline quietly (no history replay), post the roster to Telegram.
+if ($AutoDetect) {
+    $deadline = (Get-Date).AddSeconds($AutoDetectTimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $detectedWorkers = Find-LiveWorkers
+        $workers = @($detectedWorkers)
+        if ($ExpectWorkers -gt 0 -and $workers.Count -ge $ExpectWorkers) { break }
+        if ($ExpectWorkers -le 0 -and $workers.Count -gt 0) { break }
+        Start-Sleep -Seconds ([Math]::Max(2, $PollSeconds))
+    }
+    $lastHash = @{}
+    foreach ($wk in @($workers)) {
+        if (-not $wk.session) { continue }
+        try {
+            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+            $pLast = $null
+            foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+            if ($pLast) {
+                $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                $pText = ($pParts -join "`n").Trim()
+                if ($pText) {
+                    $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                    $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                }
+            }
+        } catch {}
+    }
+    if ($workers.Count -eq 0) {
+        Send-OverseerTelegram "auto-detect: no live workers found yet - a worker appears once its console sends its first task; /detect anytime to adopt later ones."
+    } else {
+        Send-OverseerTelegram ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers))
+    }
+}
 
 while ($true) {
 
@@ -361,6 +424,24 @@ while ($true) {
             # from being immediately treated as a new reply.
             $lastHash = @{}
 
+            # fleet fix: prime with the watch loop's hash format so adoption is
+            # silent - only genuinely new replies relay from here on.
+            foreach ($wk in @($workers)) {
+                if (-not $wk.session) { continue }
+                try {
+                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+                    $pLast = $null
+                    foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+                    if ($pLast) {
+                        $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                        $pText = ($pParts -join "`n").Trim()
+                        if ($pText) {
+                            $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                            $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                        }
+                    }
+                } catch {}
+            }
             foreach ($wk in @($workers)) {
                 if (-not $wk.session) { continue }
 

@@ -37,6 +37,32 @@ function Resolve-OpenCodeExe {
     throw "opencode was not found on PATH."
 }
 
+# --- hardening: opencode version drift detection -----------------------------
+# This harness parses opencode's JSON event stream (step_finish, tokens, cost).
+# If an opencode update changes that schema, accounting breaks silently. Record
+# the version on first run and warn loudly whenever it changes underneath us.
+$script:OpenCodeVersionFile = Join-Path $script:StateDir "opencode-version.txt"
+$script:OpenCodeDriftChecked = $false
+
+function Test-CicadaOpenCodeDrift {
+    if ($script:OpenCodeDriftChecked) { return }
+    $script:OpenCodeDriftChecked = $true
+    try {
+        $exe = Resolve-OpenCodeExe
+        $v = (& $exe --version 2>&1 | Out-String).Trim()
+        if (-not $v) { return }
+        if (Test-Path $script:OpenCodeVersionFile) {
+            $pinned = (Get-Content $script:OpenCodeVersionFile -Raw).Trim()
+            if ($pinned -and $pinned -ne $v) {
+                Write-Host ("WARNING: opencode version changed (" + $pinned + " -> " + $v + "). If runs misbehave or token/cost totals read zero, the event schema may have changed. Verify a run works, then delete state\opencode-version.txt to accept the new version.") -ForegroundColor Yellow
+            }
+        } else {
+            if (-not (Test-Path $script:StateDir)) { New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null }
+            $v | Set-Content $script:OpenCodeVersionFile -Encoding utf8
+        }
+    } catch { }
+}
+
 function Invoke-Agent {
     [CmdletBinding()]
     param(
@@ -56,6 +82,7 @@ function Invoke-Agent {
     $Project = (Resolve-Path $Project).Path
     Import-CicadaSecrets
     $exe = Resolve-OpenCodeExe
+    Test-CicadaOpenCodeDrift  # hardening: warn if opencode updated underneath us
 
     if (-not $LogPath) {
         if (-not (Test-Path $script:LogDir)) { New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null }
@@ -103,6 +130,12 @@ function Invoke-Agent {
         $ErrorActionPreference = $oldEAP
     }
 
+    # hardening: schema sentinel - if opencode produced assistant text but no
+    # step_finish event, the event stream changed; say so instead of silently
+    # recording zero tokens/cost forever.
+    if ($exit -eq 0 -and $textParts.Count -gt 0 -and $null -eq $tokens) {
+        Write-Host "WARNING: opencode returned text but no step_finish/token event. The event schema may have changed - token/cost accounting is unreliable until engine.ps1 is updated to match." -ForegroundColor Yellow
+    }
     $raw  = ($textParts -join "")
     $text = [regex]::Replace($raw, "(?s)<think>.*?</think>", "").Trim()
 
