@@ -5,7 +5,9 @@ fleet.ps1 - bring the whole fleet up with one command.
   .\fleet.ps1                 one titled console window per project in fleet.json
                               + the overseer window (auto-detects the fleet)
   .\fleet.ps1 -ConsolesOnly   just the project consoles
-  .\fleet.ps1 -OverseerOnly   just the overseer
+  .\fleet.ps1 -OverseerOnly -ExpectWorkers 4
+                              just the overseer - adopts the consoles you
+                              started by hand yourself (no fleet.json needed)
 
 First run creates fleet.json - edit your projects (+ optional opening task per
 project), then run it again. A worker becomes visible to the overseer once its
@@ -17,6 +19,7 @@ Telegram adopts late arrivals).
 param(
     [switch]$ConsolesOnly,
     [switch]$OverseerOnly,
+    [int]$ExpectWorkers = 0,
     [int]$OverseerWaitSec = 180
 )
 $ErrorActionPreference = "Stop"
@@ -29,7 +32,8 @@ if (-not (Test-Path $consolePs1) -or -not (Test-Path $overseerPs1)) {
 }
 
 $cfgPath = Join-Path $Root "fleet.json"
-if (-not (Test-Path $cfgPath)) {
+$fleet = @()
+if (-not $OverseerOnly -and -not (Test-Path $cfgPath)) {
     @"
 [
   { "name": "contentgen", "project": "C:\\Users\\David\\contentgen", "task": "" },
@@ -42,8 +46,10 @@ if (-not (Test-Path $cfgPath)) {
     exit 0
 }
 
-$fleet = @(Get-Content $cfgPath -Raw | ConvertFrom-Json)
-if ($fleet.Count -eq 0) { Write-Error "fleet.json has no projects"; exit 1 }
+if (-not $OverseerOnly) {
+    $fleet = @(Get-Content $cfgPath -Raw | ConvertFrom-Json)
+    if ($fleet.Count -eq 0) { Write-Error "fleet.json has no projects"; exit 1 }
+}
 
 # which projects already have a live worker session?
 function Get-LiveWorkerProjects {
@@ -99,7 +105,7 @@ if (-not $ConsolesOnly) {
     if ($ov.Count -gt 0) {
         Write-Host "  overseer already running - leaving it alone" -ForegroundColor DarkGray
     } else {
-        $expect = $launched + $skipped
+        $expect = if ($ExpectWorkers -gt 0) { $ExpectWorkers } else { $launched + $skipped }
         $obody = "& '" + $overseerPs1 + "' -AutoDetect -ExpectWorkers " + $expect + " -AutoDetectTimeoutSec " + $OverseerWaitSec
         Start-Process powershell -ArgumentList @("-NoExit", "-Command", $obody) -WorkingDirectory $Root
         Write-Host ("  launched overseer (auto-detect, expecting " + $expect + " worker(s))") -ForegroundColor Green

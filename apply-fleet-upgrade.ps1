@@ -22,6 +22,10 @@ Fixes in manager\overseer.ps1:
 Fix in manager\console.ps1:
   5. each console window titles itself "CICADA console - <project>".
 
+Add to agent.ps1:
+  6. "Fleet up" menu entry (and -Mode fleet): overseer-only auto-detect for
+     consoles you started yourself, or full launch from fleet.json.
+
 Same safety model as apply-hardening.ps1: git baseline first, exact anchors
 verified once each, syntax check before writing, idempotent.
 Rollback:  git checkout -- manager
@@ -189,6 +193,27 @@ $o6Text = @'
 $sys = "You rewrite a worker agent's latest reply for the operator's Telegram chat. Plain English, short labeled lines, no jargon, no markdown, no filler. The worker follows a plan broken into phases; its reply says what it did and what comes next. Output EXACTLY these lines, in this order, nothing else: CHANGED: one or two plain sentences - what the worker actually did, built, or fixed this round; name real files, commands, or results when the reply mentions them. NEXT: what is left to do - the next phase or remaining plan items; if the worker is blocked or waiting for direction, say what it is waiting for; if the plan is finished, say plan complete. NEEDS YOU: include this line ONLY when the worker is blocked, errored, or needs a decision - one plain sentence on exactly what is needed from the operator. SUGGESTION: the single most useful short message the operator could send back verbatim, e.g. implement phase 14, or run the tests, or fix the failing validation; write exactly none needed if there is nothing useful to send. Never invent facts, progress, or blockers. If the reply is only a question or acknowledgement, CHANGED says so, NEXT says what you can tell, SUGGESTION answers it or says none needed.";
 '@
 
+$a4Text = @'
+# ---------------- fleet: Telegram overseer for hand-started consoles ----------------
+if ($Mode -eq "fleet") {
+    $fleetScript = Join-Path $Root "fleet.ps1"
+    if (-not (Test-Path $fleetScript)) { Write-Error "fleet.ps1 not found in the CICADA root - copy it there first."; exit 1 }
+    $sub = Show-CicadaMenu -Title "Fleet launch" -Options @("Overseer only - detect the consoles I started myself", "Full launch - open consoles from fleet.json + overseer") -Default 0
+    if ($sub -eq 0) {
+        $expIn = (Read-Host "Workers to wait for before posting the roster [4]").Trim()
+        $exp = 4
+        $parsed = 0
+        if ($expIn -and [int]::TryParse($expIn, [ref]$parsed)) { $exp = $parsed }
+        & $fleetScript -OverseerOnly -ExpectWorkers $exp
+        exit $LASTEXITCODE
+    }
+    & $fleetScript
+    exit $LASTEXITCODE
+}
+
+
+'@
+
 $c1Text = @'
 try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
 '@
@@ -221,7 +246,25 @@ $patches = @(
 
     @{ File = "manager\console.ps1"; Name = "console: window title per project"
        Pattern = '\$Project = \(Resolve-Path \$Project\)\.Path\r?\n'
-       Mode = "After"; Marker = 'CICADA console - '; Text = $c1Text }
+       Mode = "After"; Marker = 'CICADA console - '; Text = $c1Text },
+
+    @{ File = "agent.ps1"; Name = "agent: -Mode fleet in ValidateSet"
+       Pattern = '"consult", "overseer"'
+       Mode = "After"; Marker = '"overseer", "fleet"'; Text = ', "fleet"' },
+
+    @{ File = "agent.ps1"; Name = "agent: Fleet up menu entry"
+       Pattern = '"Overseer \(telegram manager for the fleet\)"'
+       Mode = "After"; Marker = 'Fleet up (overseer auto-detect'
+       Text = ', "Fleet up (overseer auto-detect + Telegram control of running workers)"' },
+
+    @{ File = "agent.ps1"; Name = "agent: menu branch for fleet"
+       Pattern = '    elseif \(\$mi -eq 11\) \{ \$Mode = "overseer" \}'
+       Mode = "After"; Marker = '$mi -eq 12'
+       Text = "`r`n    elseif (`$mi -eq 12) { `$Mode = `"fleet`" }" },
+
+    @{ File = "agent.ps1"; Name = "agent: fleet handler (before the project prompt)"
+       Pattern = 'if \(-not \$Project -and \$Mode -ne "pi" -and \$Mode -ne "debulk" -and \$Mode -ne "getskills" -and \$Mode -ne "overseer"\) \{ \$Project = \(Read-Host "Project \(e\.g\. C:\\Users\\David\\my-project\)"\)\.Trim\(\) \}'
+       Mode = "Before"; Marker = 'fleet: Telegram overseer for hand-started consoles'; Text = $a4Text }
 )
 
 # ---------------- apply (in memory; write only if everything verifies) --------
@@ -286,8 +329,9 @@ Write-Host "  overseer.ps1 - adopts one worker per port (all 4 consoles visible)
 Write-Host "  overseer.ps1 - /detect baselines quietly instead of replaying history"
 Write-Host "  overseer.ps1 - -AutoDetect mode + window title"
 Write-Host "  console.ps1  - window titled per project"
+Write-Host "  agent.ps1    - 'Fleet up' menu entry (and -Mode fleet)"
 Write-Host ""
-Write-Host "Next: .\fleet.ps1  (first run creates fleet.json - edit your 4 projects, run it again)" -ForegroundColor Cyan
+Write-Host "Next: .\agent.ps1 and pick 'Fleet up' - or run .\fleet.ps1 directly" -ForegroundColor Cyan
 Write-Host ""
 if ($script:GitBaselineOk) {
     Write-Host "Review:   git diff manager"
