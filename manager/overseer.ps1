@@ -211,11 +211,14 @@ function Get-NewAssistantMessages {
     return @($found)
 }
 function Find-LiveWorkers {
-    # fleet fix v2: opencode stores sessions per PROJECT, so every serve instance
-    # of one project lists the same sessions. A worker's identity is its SESSION,
-    # not its port - the same session on two ports is one worker (first port
-    # wins). Orphaned serves (console window closed, server still listening) and
-    # sessions idle over $MaxSessionAgeHours are skipped.
+    # fleet fix v2.1: opencode stores sessions per PROJECT, so every serve
+    # instance of one project lists the same sessions. A worker's identity is
+    # its SESSION, not its port - the same session on two ports is one worker
+    # (first port wins; callsigns follow ascending port order).
+    # Orphaned serves (console window closed, server still listening) are tagged
+    # [zombie-server] but NEVER skipped: opencode's process tree makes parentage
+    # unreliable, and a missed live worker is worse than an adopted zombie.
+    # Sessions idle over $MaxSessionAgeHours are skipped as stale.
     $found = @()
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
@@ -230,14 +233,11 @@ function Find-LiveWorkers {
         $port = [int]$conn.LocalPort
         $url = "http://127.0.0.1:" + $port
 
-        # zombie check: a serve process whose parent console is gone is a corpse
+        $orphanNote = ""
         $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
         if ($owningProc) {
             $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
-            if (-not $parentProc) {
-                Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
-                continue
-            }
+            if (-not $parentProc) { $orphanNote = " [zombie-server]" }
         }
 
         try {
@@ -270,15 +270,13 @@ function Find-LiveWorkers {
                     name = ""
                     url = $url
                     session = [string]$sess.id
-                    project = [string]$sess.directory
+                    project = ([string]$sess.directory + $orphanNote)
                 }
             }
         }
         catch {}
     }
 
-    # dedupe by session id; ports were scanned ascending, so first port wins and
-    # callsigns follow port order
     $seen = @{}
     $bySession = @()
     foreach ($fw in $found) {
