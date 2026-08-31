@@ -40,8 +40,9 @@ function Send-OverseerTelegram([string]$text) {
     } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
 }
 function Send-OverseerMenu([string]$text, $rows) {
-    # fleet fix v2.6: inline keyboard message - tap buttons instead of typing
-    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ inline_keyboard = @($rows) } } | ConvertTo-Json -Depth 10
+    # fleet fix v2.7: persistent reply keyboard - stays pinned above the input
+    # box until Hide; buttons send their label as text (rides the command paths)
+    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ keyboard = @($rows); resize_keyboard = $true; is_persistent = $true } } | ConvertTo-Json -Depth 10
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
     } catch { Write-Host ("  telegram menu send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
@@ -54,18 +55,26 @@ function Send-OverseerAnswerCallback([string]$callbackId) {
 }
 function Get-WorkerMenu($fleet) {
     $rows = New-Object System.Collections.ArrayList
+    $row = New-Object System.Collections.ArrayList
     foreach ($w in @($fleet)) {
-        [void]$rows.Add(@(@{ text = ($w.name + "  [" + $w.project + "]"); callback_data = ("w:" + $w.id) }))
+        if ($row.Count -ge 2) { [void]$rows.Add($row.ToArray()); $row = New-Object System.Collections.ArrayList }
+        [void]$row.Add(@{ text = $w.name })
     }
-    [void]$rows.Add(@(@{ text = "Refresh fleet"; callback_data = "menu:detect" }, @{ text = "Status all"; callback_data = "menu:status" }))
+    if ($row.Count -gt 0) { [void]$rows.Add($row.ToArray()) }
+    [void]$rows.Add(@(@{ text = "Refresh" }, @{ text = "Status all" }, @{ text = "Hide" }))
     return $rows
 }
 function Get-WorkerCommandMenu([string]$id, [string]$name) {
     $rows = New-Object System.Collections.ArrayList
-    [void]$rows.Add(@(@{ text = "Message " + $name; callback_data = ("msg:" + $id) }))
-    [void]$rows.Add(@(@{ text = "Ask whats next"; callback_data = ("next:" + $id) }, @{ text = "Live status"; callback_data = ("doing:" + $id) }))
-    [void]$rows.Add(@(@{ text = "Interrupt"; callback_data = ("int:" + $id) }, @{ text = "Back"; callback_data = "menu:main" }))
+    [void]$rows.Add(@(@{ text = ("Message " + $name) }, @{ text = ("Next " + $name) }))
+    [void]$rows.Add(@(@{ text = ("Status " + $name) }, @{ text = ("Interrupt " + $name) }))
+    [void]$rows.Add(@(@{ text = "Back" }, @{ text = "Hide" }))
     return $rows
+}
+function Send-OverseerKeyboardRemove([string]$text) {
+    # fleet fix v2.7: peel the pinned keyboard off
+    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ remove_keyboard = $true } } | ConvertTo-Json -Depth 6
+    try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30) } catch {}
 }
 function Get-OverseerUpdates([long]$offset) {
     try {
@@ -520,6 +529,70 @@ while ($true) {
             else { Send-OverseerTelegram "no adopted workers - /detect first." }
             continue
         }
+        # fleet fix v2.7: persistent-keyboard labels arrive as plain text.
+        # Handles navigation labels first so they are never swallowed by a
+        # pending message/interrupt mode.
+        if ($txt -match '^(Back|Hide|Refresh|Status all)$' -or $txt -match '^(Message|Next|Status|Interrupt)\s+(\w+)$' -or @($workers | Where-Object { $_.name -ieq $txt }).Count -gt 0) {
+            if ($txt -eq "Back") {
+                $pendingMsgFor = $null; $pendingIntFor = $null
+                if (@($workers).Count -gt 0) { Send-OverseerMenu "fleet menu - pick a worker:" (Get-WorkerMenu $workers) }
+                else { Send-OverseerTelegram "no adopted workers - /detect first." }
+                continue
+            }
+            if ($txt -eq "Hide") {
+                $pendingMsgFor = $null; $pendingIntFor = $null
+                Send-OverseerKeyboardRemove "keyboard hidden - /menu brings it back"
+                continue
+            }
+            if ($txt -eq "Refresh") { $txt = "/detect" }
+            elseif ($txt -eq "Status all") { $txt = "/status" }
+            elseif ($txt -match '^Message\s+(\w+)$') {
+                $wkr = Resolve-WorkerTarget $Matches[1] $workers
+                if ($wkr -and $wkr.session) {
+                    $pendingIntFor = $null
+                    $pendingMsgFor = $wkr.id
+                    Send-OverseerTelegram ("message mode: " + $wkr.name + " - your next typed message goes straight to it, no /prompt needed. Back or /cancel to abort")
+                } else { Send-OverseerTelegram ("no adopted worker '" + $Matches[1] + "' - /detect first") }
+                continue
+            }
+            elseif ($txt -match '^Interrupt\s+(\w+)$') {
+                $wkr = Resolve-WorkerTarget $Matches[1] $workers
+                if ($wkr -and $wkr.session) {
+                    $pendingMsgFor = $null
+                    $pendingIntFor = $wkr.id
+                    Send-OverseerTelegram ("interrupt mode: " + $wkr.name + " - your next typed message becomes the interrupt advice. Back or /cancel to abort")
+                } else { Send-OverseerTelegram ("no adopted worker '" + $Matches[1] + "' - /detect first") }
+                continue
+            }
+            elseif ($txt -match '^Status\s+(\w+)$') {
+                $pendingMsgFor = $null; $pendingIntFor = $null
+                $wkr = Resolve-WorkerTarget $Matches[1] $workers
+                if ($wkr -and $wkr.session) {
+                    try {
+                        $d = Get-WorkerDoing $wkr
+                        $state = if ($d.busy) { "working" } else { "idle" }
+                        $brief = [string]$d.tail
+                        if ($brief.Length -gt 200) { $brief = $brief.Substring(0, 200) + "..." }
+                        Send-OverseerTelegram ($wkr.name + " - " + $state + " - " + $brief)
+                    } catch { Send-OverseerTelegram ($wkr.name + " - unreachable") }
+                } else { Send-OverseerTelegram ("no adopted worker '" + $Matches[1] + "' - /detect first") }
+                continue
+            }
+            elseif ($txt -match '^Next\s+(\w+)$') {
+                $pendingMsgFor = $null; $pendingIntFor = $null
+                $wkr = Resolve-WorkerTarget $Matches[1] $workers
+                if ($wkr -and $wkr.session) {
+                    $txt = "/prompt " + $wkr.name + " whats next to implement? answer in two or three short lines"
+                } else { Send-OverseerTelegram ("no adopted worker '" + $Matches[1] + "' - /detect first"); continue }
+            }
+            else {
+                $wkr = @($workers | Where-Object { $_.name -ieq $txt })[0]
+                $pendingMsgFor = $null; $pendingIntFor = $null
+                if ($wkr) { Send-OverseerMenu ($wkr.name + " - pick an action:") (Get-WorkerCommandMenu $wkr.id $wkr.name) }
+                continue
+            }
+        }
+
         if ($pendingMsgFor -and $txt -notmatch '^/') {
             $wkr = Resolve-WorkerTarget $pendingMsgFor $workers
             $pendingMsgFor = $null
