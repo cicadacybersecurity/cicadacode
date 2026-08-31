@@ -450,6 +450,10 @@ try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
 Send-OverseerTelegram "overseer online - /detect adopts the fleet; /menu gives tap-buttons; /status /doing <name> /interrupt <name> <advice> work too."
+# fleet fix v3.0: the pinned top menu is THE menu now - peel off any stale
+# bottom reply-keyboard left over from older versions (Telegram needs an
+# explicit remove_keyboard push to clear it client-side).
+Send-OverseerKeyboardRemove "bottom keyboard removed - the pinned fleet menu at the top is the persistent one"
 
 $detectedWorkers = @()
 $lastHash = @{}
@@ -640,7 +644,7 @@ while ($true) {
             else {
                 $wkr = @($workers | Where-Object { $_.name -ieq $txt })[0]
                 $pendingMsgFor = $null; $pendingIntFor = $null
-                if ($wkr) { Send-OverseerMenu ($wkr.name + " - pick an action:") (Get-WorkerCommandMenu $wkr.id $wkr.name) }
+                if ($wkr) { Set-OverseerPinnedMenu ($wkr.name + " - pick an action:") (Get-WorkerInlineCommandMenu $wkr.id $wkr.name) }
                 continue
             }
         }
