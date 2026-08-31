@@ -78,6 +78,55 @@ function Send-OverseerKeyboardRemove([string]$text) {
     $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ remove_keyboard = $true } } | ConvertTo-Json -Depth 6
     try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30) } catch {}
 }
+function Send-OverseerInlineMenu([string]$text, $rows) {
+    # fleet fix v2.9: inline keyboard message (the pinned fleet menu lives on one)
+    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ inline_keyboard = @($rows) } } | ConvertTo-Json -Depth 10
+    try {
+        return (Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
+    } catch { Write-Host ("  telegram inline menu send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow; return $null }
+}
+function Set-OverseerPinnedMenu([string]$text, $rows) {
+    # fleet fix v2.9: ONE menu pinned at the top of the chat; edited in place on
+    # every tap/refresh so the chat is never spammed. Sends + pins a fresh one if
+    # the pinned copy is gone.
+    if ($script:menuMessageId) {
+        $eBody = @{ chat_id = $chatId; message_id = $script:menuMessageId; text = $text; reply_markup = @{ inline_keyboard = @($rows) } } | ConvertTo-Json -Depth 10
+        try {
+            [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/editMessageText") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($eBody)) -TimeoutSec 15)
+            return
+        } catch {
+            $em = ""; if ($_.ErrorDetails) { $em = [string]$_.ErrorDetails.Message }
+            if ($em -match 'not modified') { return }
+            $script:menuMessageId = $null
+        }
+    }
+    $r = Send-OverseerInlineMenu $text $rows
+    if ($r -and $r.result -and $r.result.message_id) {
+        $script:menuMessageId = [long]$r.result.message_id
+        $pBody = @{ chat_id = $chatId; message_id = $script:menuMessageId; disable_notification = $true } | ConvertTo-Json
+        try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/pinChatMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($pBody)) -TimeoutSec 15) } catch {}
+    }
+}
+function Get-WorkerInlineMenu($fleet) {
+    $rows = New-Object System.Collections.ArrayList
+    $row = New-Object System.Collections.ArrayList
+    foreach ($w in @($fleet)) {
+        if ($row.Count -ge 4) { [void]$rows.Add($row.ToArray()); $row = New-Object System.Collections.ArrayList }
+        [void]$row.Add(@{ text = $w.name; callback_data = ("w:" + $w.id) })
+    }
+    if ($row.Count -gt 0) { [void]$rows.Add($row.ToArray()) }
+    [void]$rows.Add(@(@{ text = "Refresh"; callback_data = "menu:detect" }, @{ text = "Status all"; callback_data = "menu:status" }))
+    return $rows
+}
+function Get-WorkerInlineCommandMenu([string]$id, [string]$name) {
+    $rows = New-Object System.Collections.ArrayList
+    [void]$rows.Add(@(@{ text = ("Message " + $name); callback_data = ("msg:" + $id) }))
+    [void]$rows.Add(@(@{ text = ("Next " + $name); callback_data = ("next:" + $id) }))
+    [void]$rows.Add(@(@{ text = ("Status " + $name); callback_data = ("doing:" + $id) }))
+    [void]$rows.Add(@(@{ text = ("Interrupt " + $name); callback_data = ("int:" + $id) }))
+    [void]$rows.Add(@(@{ text = "Back"; callback_data = "menu:main" }))
+    return $rows
+}
 function Get-OverseerUpdates([long]$offset) {
     try {
         $r = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getUpdates?timeout=0&offset=" + $offset) -TimeoutSec 15
@@ -408,6 +457,7 @@ $lastSuggested = @{}
 $lastRelayedWorker = $null
 $pendingMsgFor = $null   # v2.6: message-mode worker id (button-driven)
 $pendingIntFor = $null   # v2.6: interrupt-advice-mode worker id
+$menuMessageId = $null        # v2.9: pinned fleet menu message id
 $tgOffset = 0
 $workers = @()
 
@@ -439,7 +489,7 @@ if ($AutoDetect) {
         Send-OverseerTelegram "auto-detect: no live workers found yet - a worker appears once its console sends its first task; /detect anytime to adopt later ones."
     } else {
         Send-OverseerTelegram ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers))
-        Send-OverseerMenu "tap a worker for quick actions:" (Get-WorkerMenu $workers)
+        Set-OverseerPinnedMenu ("fleet menu (" + $workers.Count + " worker(s)) - tap one:") (Get-WorkerInlineMenu $workers)
     }
 }
 
@@ -464,7 +514,7 @@ while ($true) {
             $cbData = [string]$cb.data
             Send-OverseerAnswerCallback ([string]$cb.id)
             if ($cbData -eq "menu:main") {
-                if (@($workers).Count -gt 0) { Send-OverseerMenu "fleet menu - pick a worker:" (Get-WorkerMenu $workers) }
+                if (@($workers).Count -gt 0) { Set-OverseerPinnedMenu "fleet menu - tap a worker:" (Get-WorkerInlineMenu $workers) }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -472,7 +522,7 @@ while ($true) {
             elseif ($cbData -eq "menu:status") { $txt = "/status" }
             elseif ($cbData -match '^w:(\d+)$') {
                 $wkr = Resolve-WorkerTarget $Matches[1] $workers
-                if ($wkr) { Send-OverseerMenu ($wkr.name + " - pick an action:") (Get-WorkerCommandMenu $wkr.id $wkr.name) }
+                if ($wkr) { Set-OverseerPinnedMenu ($wkr.name + " - pick an action:") (Get-WorkerInlineCommandMenu $wkr.id $wkr.name) }
                 else { Send-OverseerTelegram "that menu is stale - /menu for a fresh one" }
                 continue
             }
@@ -527,7 +577,7 @@ while ($true) {
             continue
         }
         if ($txt -match '^/menu') {
-            if (@($workers).Count -gt 0) { Send-OverseerMenu "fleet menu - pick a worker:" (Get-WorkerMenu $workers) }
+            if (@($workers).Count -gt 0) { Set-OverseerPinnedMenu "fleet menu - tap a worker:" (Get-WorkerInlineMenu $workers) }
             else { Send-OverseerTelegram "no adopted workers - /detect first." }
             continue
         }
@@ -537,7 +587,7 @@ while ($true) {
         if ($txt -match '^(Back|Hide|Refresh|Status all)$' -or $txt -match '^(Message|Next|Status|Interrupt)\s+(\w+)$' -or @($workers | Where-Object { $_.name -ieq $txt }).Count -gt 0) {
             if ($txt -eq "Back") {
                 $pendingMsgFor = $null; $pendingIntFor = $null
-                if (@($workers).Count -gt 0) { Send-OverseerMenu "fleet menu - pick a worker:" (Get-WorkerMenu $workers) }
+                if (@($workers).Count -gt 0) { Set-OverseerPinnedMenu "fleet menu - tap a worker:" (Get-WorkerInlineMenu $workers) }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -655,7 +705,7 @@ while ($true) {
             }
             else {
                 Send-OverseerTelegram (Get-FleetRoster $workers)
-                Send-OverseerMenu "tap a worker for quick actions:" (Get-WorkerMenu $workers)
+                Set-OverseerPinnedMenu ("fleet menu (" + $workers.Count + " worker(s)) - tap one:") (Get-WorkerInlineMenu $workers)
             }
 
             continue
