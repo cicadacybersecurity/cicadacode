@@ -214,15 +214,16 @@ function Get-NewAssistantMessages {
     return @($found)
 }
 function Find-LiveWorkers {
-    # fleet fix v2.1: opencode stores sessions per PROJECT, so every serve
-    # instance of one project lists the same sessions. A worker's identity is
-    # its SESSION, not its port - the same session on two ports is one worker
-    # (first port wins; callsigns follow ascending port order).
-    # Orphaned serves (console window closed, server still listening) are tagged
-    # [zombie-server] but NEVER skipped: opencode's process tree makes parentage
-    # unreliable, and a missed live worker is worse than an adopted zombie.
-    # Sessions idle over $MaxSessionAgeHours are skipped as stale.
+    # fleet fix v2.3: ONE process map per scan instead of 2 CIM calls per port
+    # (that was the crawl), newest worker session per port, one log line per
+    # stale port. Identity = session: opencode stores sessions per project, so
+    # the same session on two ports is one worker (first port wins).
     $found = @()
+
+    $procParent = @{}
+    foreach ($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $procParent[[int]$p.ProcessId] = [int]$p.ParentProcessId
+    }
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
         Where-Object {
@@ -237,44 +238,45 @@ function Find-LiveWorkers {
         $url = "http://127.0.0.1:" + $port
 
         $orphanNote = ""
-        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
-        if ($owningProc) {
-            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
-            if (-not $parentProc) { $orphanNote = " [zombie-server]" }
+        $ownPid = [int]$conn.OwningProcess
+        if ($procParent.ContainsKey($ownPid)) {
+            $ppid = [int]$procParent[$ownPid]
+            if (-not $procParent.ContainsKey($ppid)) { $orphanNote = " [zombie-server]" }
         }
 
         try {
             $sessions = Invoke-RestMethod `
                 -Method Get `
                 -Uri ($url + "/session") `
-                -TimeoutSec 5
+                -TimeoutSec 2
 
-            $workerSessions = @(
+            $newest = @(
                 $sessions |
-                Where-Object {
-                    [string]$_.title -match '^worker-\d+$'
-                } |
-                Sort-Object { [long]$_.time.updated } -Descending
+                Where-Object { [string]$_.title -match '^worker-\d+$' } |
+                Sort-Object { [long]$_.time.updated } -Descending |
+                Select-Object -First 1
             )
 
-            foreach ($sess in $workerSessions) {
-                $ageHours = 999
-                try {
-                    $updMs = [long]$sess.time.updated
-                    if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
-                    $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
-                } catch {}
-                if ($ageHours -gt $MaxSessionAgeHours) {
-                    Write-Host ("  detect: skipping stale session on port " + $port + " (idle " + [math]::Round($ageHours, 1) + "h - raise -MaxSessionAgeHours to adopt it)") -ForegroundColor DarkGray
-                    continue
-                }
-                $found += @{
-                    id = "pending"
-                    name = ""
-                    url = $url
-                    session = [string]$sess.id
-                    project = ([string]$sess.directory + $orphanNote)
-                }
+            if ($newest.Count -eq 0) { continue }
+            $sess = $newest[0]
+
+            $ageHours = 999
+            try {
+                $updMs = [long]$sess.time.updated
+                if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
+                $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
+            } catch {}
+            if ($ageHours -gt $MaxSessionAgeHours) {
+                Write-Host ("  detect: port " + $port + " newest session idle " + [math]::Round($ageHours, 1) + "h - stale, skipped (task that worker to wake it, or close the dead console)") -ForegroundColor DarkGray
+                continue
+            }
+
+            $found += @{
+                id = "pending"
+                name = ""
+                url = $url
+                session = [string]$sess.id
+                project = ([string]$sess.directory + $orphanNote)
             }
         }
         catch {}
@@ -361,14 +363,10 @@ $workers = @()
 # fleet: optional startup auto-detect - wait for consoles to boot, adopt every
 # live worker, baseline quietly (no history replay), post the roster to Telegram.
 if ($AutoDetect) {
-    $deadline = (Get-Date).AddSeconds($AutoDetectTimeoutSec)
-    while ((Get-Date) -lt $deadline) {
-        $detectedWorkers = Find-LiveWorkers
-        $workers = @($detectedWorkers)
-        if ($ExpectWorkers -gt 0 -and $workers.Count -ge $ExpectWorkers) { break }
-        if ($ExpectWorkers -le 0 -and $workers.Count -gt 0) { break }
-        Start-Sleep -Seconds ([Math]::Max(2, $PollSeconds))
-    }
+    # fleet fix v2.3: single scan - no startup stall. Telegram listens from
+    # the first second; /detect rescans anytime (it is fast now).
+    $detectedWorkers = Find-LiveWorkers
+    $workers = @($detectedWorkers)
     $lastHash = @{}
     foreach ($wk in @($workers)) {
         if (-not $wk.session) { continue }
@@ -442,84 +440,8 @@ while ($true) {
                     }
                 } catch {}
             }
-            foreach ($wk in @($workers)) {
-                if (-not $wk.session) { continue }
-
-                try {
-                    $msgs = Invoke-RestMethod `
-                        -Method Get `
-                        -Uri ($wk.url + "/session/" + $wk.session + "/message") `
-                        -TimeoutSec 15
-
-                    $newMessages = Get-NewAssistantMessages $msgs $lastHash[$wk.id]
-
-            foreach ($nm in @($newMessages)) {
-                $lastHash[$wk.id] = $nm.id
-
-                if (-not $nm.text) {
-                    continue
-                }
-
-                Write-Host (
-                    "[" +
-                    (Get-Date -Format HH:mm:ss) +
-                    "] " +
-                    $wk.name +
-                    " replied (" +
-                    $nm.text.Length +
-                    " chars) - summarizing"
-                ) -ForegroundColor DarkGray
-
-                $sum = Invoke-OverseerSummary $nm.text $wk.name
-
-                if (-not $sum) {
-                    continue
-                }
-
-                $relay =
-                    "[" +
-                    $wk.name +
-                    " | " +
-                    $wk.project +
-                    "]`n" +
-                    $sum
-
-                Send-OverseerTelegram $relay
-            }
-
-            continue
-            $last = $null
-
-                    foreach ($mm in @($msgs)) {
-                        if ([string]$mm.info.role -eq "assistant") {
-                            $last = $mm
-                        }
-                    }
-
-                    if ($last) {
-                        $parts = @(
-                            $last.parts |
-                            ForEach-Object { [string]$_.text } |
-                            Where-Object { $_ }
-                        )
-
-                        $text = ($parts -join "`n").Trim()
-
-                        if ($text) {
-                            $hashInput =
-                                $text.Length.ToString() +
-                                ":" +
-                                $text.Substring(0, [Math]::Min(64, $text.Length))
-
-                            $lastHash[$wk.id] =
-                                [Convert]::ToBase64String(
-                                    [System.Text.Encoding]::UTF8.GetBytes($hashInput)
-                                )
-                        }
-                    }
-                }
-                catch {}
-            }
+            # fleet fix v2.3: adoption is SILENT. Baselines were primed above;
+            # only replies that arrive AFTER this moment relay via the watch loop.
 
             if ($workers.Count -eq 0) {
                 Send-OverseerTelegram "no live workers detected."
