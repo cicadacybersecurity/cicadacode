@@ -6,7 +6,8 @@
     [switch]$Yes,
     [switch]$AutoDetect,
     [int]$ExpectWorkers = 0,
-    [int]$AutoDetectTimeoutSec = 180
+    [int]$AutoDetectTimeoutSec = 180,
+    [double]$MaxSessionAgeHours = 6
 )
 # overseer.ps1 - the Telegram manager for the parallel worker fleet.
 # v5: free-form messages are decoded by the cheap model into actions; v4's
@@ -210,6 +211,11 @@ function Get-NewAssistantMessages {
     return @($found)
 }
 function Find-LiveWorkers {
+    # fleet fix v2: opencode stores sessions per PROJECT, so every serve instance
+    # of one project lists the same sessions. A worker's identity is its SESSION,
+    # not its port - the same session on two ports is one worker (first port
+    # wins). Orphaned serves (console window closed, server still listening) and
+    # sessions idle over $MaxSessionAgeHours are skipped.
     $found = @()
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
@@ -224,61 +230,70 @@ function Find-LiveWorkers {
         $port = [int]$conn.LocalPort
         $url = "http://127.0.0.1:" + $port
 
+        # zombie check: a serve process whose parent console is gone is a corpse
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) {
+                Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
+                continue
+            }
+        }
+
         try {
             $sessions = Invoke-RestMethod `
                 -Method Get `
                 -Uri ($url + "/session") `
                 -TimeoutSec 5
 
-            $workerSession = @(
+            $workerSessions = @(
                 $sessions |
                 Where-Object {
                     [string]$_.title -match '^worker-\d+$'
                 } |
-                Sort-Object { [long]$_.time.updated } -Descending |
-                Select-Object -First 1
+                Sort-Object { [long]$_.time.updated } -Descending
             )
 
-            if ($workerSession.Count -eq 0) {
-                continue
-            }
-
-            $sess = $workerSession[0]
-
-            $workerId = (
-                [regex]::Match(
-                    [string]$sess.title,
-                    '^worker-(\d+)$'
-                )
-            ).Groups[1].Value
-
-            if (-not $workerId) {
-                continue
-            }
-
-            $found += @{
-                id = $workerId
-                name = (Get-Callsign $workerId)
-                url = $url
-                session = [string]$sess.id
-                project = [string]$sess.directory
+            foreach ($sess in $workerSessions) {
+                $ageHours = 999
+                try {
+                    $updMs = [long]$sess.time.updated
+                    if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
+                    $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
+                } catch {}
+                if ($ageHours -gt $MaxSessionAgeHours) {
+                    Write-Host ("  detect: skipping stale session on port " + $port + " (idle " + [math]::Round($ageHours, 1) + "h - raise -MaxSessionAgeHours to adopt it)") -ForegroundColor DarkGray
+                    continue
+                }
+                $found += @{
+                    id = "pending"
+                    name = ""
+                    url = $url
+                    session = [string]$sess.id
+                    project = [string]$sess.directory
+                }
             }
         }
         catch {}
     }
 
-    # fleet fix: multiple consoles each number their worker "worker-1" - key by
-    # port (one worker per port), then renumber in detection order so callsigns
-    # Alpha, Bravo, Charlie... are unique across the whole fleet.
-    $byPort = @($found | Sort-Object { [string]$_.url } -Unique)
-    $byPort = @($byPort | Sort-Object { [int]([uri]([string]$_.url)).Port })
+    # dedupe by session id; ports were scanned ascending, so first port wins and
+    # callsigns follow port order
+    $seen = @{}
+    $bySession = @()
+    foreach ($fw in $found) {
+        $sid = [string]$fw.session
+        if ($seen.ContainsKey($sid)) { continue }
+        $seen[$sid] = $true
+        $bySession += $fw
+    }
     $seq = 0
-    foreach ($fw in $byPort) {
+    foreach ($fw in $bySession) {
         $seq++
         $fw.id = [string]$seq
         $fw.name = (Get-Callsign $fw.id)
     }
-    return $byPort
+    return $bySession
 }
 function Resolve-WorkerTarget([string]$target, $fleet) {
     return ($fleet | Where-Object { $_.id -eq $target -or $_.name -ieq $target } | Select-Object -First 1)

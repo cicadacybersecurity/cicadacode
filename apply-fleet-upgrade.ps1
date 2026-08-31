@@ -38,6 +38,10 @@ Rollback:  git checkout -- manager agent.ps1
 v3: the detection rework replaces the whole Find-LiveWorkers function via its
     structural boundaries instead of matching an interior block - immune to
     drift between the zip and your live copy.
+v3.1: the orphan/zombie check no longer SKIPS - opencode's process tree makes
+    parentage unreliable and it was filtering out live workers. Orphans are now
+    just tagged [zombie-server] in the roster; dedupe-by-session and the stale
+    filter still keep corpses out.
 #>
 [CmdletBinding()]
 param([switch]$SkipGit)
@@ -313,6 +317,19 @@ function Find-LiveWorkers {
 
 '@
 
+$o10aText = @'
+        # orphaned serve? note it, never skip it: opencode's process tree makes
+        # parentage unreliable, and a missed live worker is worse than an
+        # adopted zombie (the stale filter below still hides old corpses).
+        $orphanNote = ""
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) { $orphanNote = " [zombie-server]" }
+        }
+
+'@
+
 $c1Text = @'
 try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
 '@
@@ -372,7 +389,16 @@ $patches = @(
 
     @{ File = "manager\overseer.ps1"; Name = "overseer: Find-LiveWorkers full rework (session identity, zombie + stale skip)"
        Pattern = 'function Find-LiveWorkers \{[\s\S]*?\r?\n\}\r?\n(?=\s*function Resolve-WorkerTarget)'
-       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text }
+       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: orphan check becomes advisory (was skipping live workers)"
+       Pattern = '        # zombie check: a serve process whose parent console is gone is a corpse[\s\S]*?            \}\r?\n        \}\r?\n'
+       Mode = "Replace"; Marker = 'zombie-server'; Text = $o10aText },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: roster annotates zombie servers"
+       Pattern = '                    project = \[string\]\$sess\.directory'
+       Mode = "Replace"; Marker = 'project = ([string]$sess.directory + $orphanNote)'
+       Text = 'project = ([string]$sess.directory + $orphanNote)' }
 )
 
 # ---------------- apply (in memory; write only if everything verifies) --------
