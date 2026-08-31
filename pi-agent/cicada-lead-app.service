@@ -1,0 +1,43 @@
+# Instagram Hashtag Research Tool — systemd service for 24/7 production
+# Installs to: /etc/systemd/system/cicada-lead-app.service
+
+[Unit]
+Description=CICADA Instagram Hashtag Research Tool (Lead App)
+Wants=network-online.target
+After=network-online.target
+# Wait for Tailscale so OLLAMA_URL (Tailscale address) is reachable
+Wants=tailscaled.service
+After=tailscaled.service network-online.target
+# Browser automation needs the virtual display
+Wants=xvfb-instagram.service
+After=xvfb-instagram.service
+
+[Service]
+Type=simple
+User=cicadaserver
+Group=cicadaserver
+WorkingDirectory=/opt/cicada-lead-app
+Environment=HOME=/home/cicadaserver
+Environment=NODE_ENV=production
+# Use system chromium on Raspberry Pi ARM
+Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+# Point to project node_modules so tsx can be found
+Environment=NODE_PATH=/home/cicadaserver/instagram-hashtag-research-tool/node_modules
+EnvironmentFile=/etc/cicada-lead-app.env
+ExecStartPre=/bin/mkdir -p /opt/cicada-lead-app
+ExecStartPre=/bin/ln -sfn /home/cicadaserver/instagram-hashtag-research-tool/.playwright-profile /opt/cicada-lead-app/.playwright-profile
+ExecStartPre=/bin/ln -sfn /home/cicadaserver/instagram-hashtag-research-tool/.playwright-profile-maps /opt/cicada-lead-app/.playwright-profile-maps
+ExecStartPre=/bin/ln -sfn /home/cicadaserver/instagram-hashtag-research-tool/.playwright-profile-facebook /opt/cicada-lead-app/.playwright-profile-facebook
+# tsx handles TypeScript + extensionless ESM imports that plain node can't resolve
+ExecStart=/home/cicadaserver/instagram-hashtag-research-tool/node_modules/.bin/tsx /opt/cicada-lead-app/dist/server.js
+Restart=on-failure
+RestartSec=5
+ReadWritePaths=/opt/cicada-lead-app
+ReadWritePaths=/home/cicadaserver/instagram-hashtag-research-tool
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

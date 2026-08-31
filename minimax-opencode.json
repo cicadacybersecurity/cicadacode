@@ -108,12 +108,82 @@
                                                 "list":  "allow",
                                                 "lsp":  "allow",
                                                 "edit":  "allow",
-                                                "bash":  "ask",
+                                                "bash":  "allow",
                                                 "task":  "deny",
                                                 "webfetch":  "deny",
                                                 "websearch":  "deny"
                                             },
                              "prompt":  "You are the CICADA Pi operator: you administer a Raspberry Pi over SSH using the connection details and rules in PI.md in the project root. Read PI.md at the start of every session and follow it for the whole session. Verify before modifying; never run destructive remote commands (rm -rf, mkfs, dd, shutdown, reboot, service stops) unless the user\u0027s current prompt explicitly asked for exactly that; prefer idempotent commands; report what each command returned honestly; never claim a remote change without showing the command output that proves it; if a command fails, show the error and propose the fix rather than retrying blindly."
-                         }
+                         },
+                  "consult":  {
+                                  "mode":  "primary",
+                                  "model":  "minimax/MiniMax-M3",
+                                  "temperature":  0.4,
+                                  "steps":  2,
+                                  "permission":  {
+                                                     "read":  "allow",
+                                                     "edit":  "deny",
+                                                     "bash":  "deny",
+                                                     "glob":  "deny",
+                                                     "grep":  "deny",
+                                                     "list":  "deny",
+                                                     "lsp":  "deny",
+                                                     "task":  "deny",
+                                                     "webfetch":  "deny",
+                                                     "websearch":  "deny"
+                                                 },
+                                  "prompt":  "You are one half of a structured two-AI consultation developing an idea. Follow the role instructions in each message exactly, stay in the assigned persona, and keep to the requested length. No tools, no files, no delegation - this is pure conversation. Always answer in a single step with plain text - never call a tool.",
+                                  "tools":  {
+                                                "bash":  false,
+                                                "edit":  false,
+                                                "write":  false,
+                                                "patch":  false,
+                                                "read":  false,
+                                                "grep":  false,
+                                                "glob":  false,
+                                                "list":  false,
+                                                "lsp":  false,
+                                                "task":  false,
+                                                "todowrite":  false,
+                                                "todoread":  false,
+                                                "webfetch":  true,
+                                                "websearch":  true
+                                            }
+                              },
+                  "consult-web":  {
+                                      "mode":  "primary",
+                                      "model":  "minimax/MiniMax-M3",
+                                      "temperature":  0.4,
+                                      "steps":  4,
+                                      "permission":  {
+                                                         "read":  "allow",
+                                                         "edit":  "deny",
+                                                         "bash":  "deny",
+                                                         "glob":  "deny",
+                                                         "grep":  "deny",
+                                                         "list":  "deny",
+                                                         "lsp":  "deny",
+                                                         "task":  "deny",
+                                                         "webfetch":  "allow",
+                                                         "websearch":  "allow"
+                                                     },
+                                      "prompt":  "You are one half of a structured two-AI conversation. Every message contains a full role definition (ROLE, MISSION, METHOD, RULES, and what every turn must contain) - follow it exactly, stay in the assigned seat, respond to what your counterpart actually said, and keep to the requested length. The WORKING NOTES section is the shared record of what has been settled - treat it as ground truth. If a LENGTH OVERRIDE or an OPERATOR NOTE is present, it outranks other guidance. When asked to act as SCRIBE or NORMALISER, return exactly what is requested with no preamble. No files, no edits, no delegation. Use web tools ONLY when the role definition explicitly calls for checking something real and current - at most one lookup per turn.",
+                                      "tools":  {
+                                                    "bash":  false,
+                                                    "edit":  false,
+                                                    "write":  false,
+                                                    "patch":  false,
+                                                    "read":  false,
+                                                    "grep":  false,
+                                                    "glob":  false,
+                                                    "list":  false,
+                                                    "lsp":  false,
+                                                    "task":  false,
+                                                    "todowrite":  false,
+                                                    "todoread":  false,
+                                                    "webfetch":  true,
+                                                    "websearch":  true
+                                                }
+                                  }
               }
 }

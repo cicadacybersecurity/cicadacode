@@ -1,0 +1,18 @@
+﻿{
+    "workers":  {
+                    "1":  {
+                              "title":  "worker-1",
+                              "port":  4313,
+                              "pid":  32964,
+                              "task":  "actually exectue the next step first",
+                              "session":  "ses_fac4e2930ffe6OhAKqlxAxuIrF",
+                              "model":  "minimax/MiniMax-M3",
+                              "agent":  "",
+                              "state":  "idle",
+                              "log":  "C:\\Users\\David\\minimax-agents\\state\\logs\\w1-20260830-233843.jsonl",
+                              "updated":  "2026-08-30T23:41:23.2296666Z",
+                              "project":  "C:\\Users\\David\\Desktop\\facebook",
+                              "started":  "2026-08-30T17:22:37.6186395Z"
+                          }
+                }
+}

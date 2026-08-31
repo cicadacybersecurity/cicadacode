@@ -1,0 +1,18 @@
+﻿{
+    "workers":  {
+                    "1":  {
+                              "title":  "worker-1",
+                              "port":  4317,
+                              "pid":  43408,
+                              "task":  "",
+                              "session":  null,
+                              "model":  "minimax/MiniMax-M3",
+                              "agent":  "",
+                              "state":  "idle",
+                              "log":  null,
+                              "updated":  null,
+                              "project":  "C:\\Users\\David\\Desktop\\cicadawatchtower",
+                              "started":  "2026-08-30T15:48:17.6951407Z"
+                          }
+                }
+}

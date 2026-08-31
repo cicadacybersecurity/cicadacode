@@ -1,0 +1,7 @@
+{
+  "max_workers": 3,
+  "model": "minimax/MiniMax-M2.7",
+  "agent": "build",
+  "max_tool_calls": 20,
+  "tool_timeout_seconds": 30
+}

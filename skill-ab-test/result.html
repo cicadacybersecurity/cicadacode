@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CICADA &mdash; Agent System Status</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --bg-elev: #11171f;
+      --bg-elev-2: #161d27;
+      --border: #1f2a36;
+      --border-strong: #2a3744;
+      --text: #d7e0ea;
+      --text-dim: #8b97a6;
+      --text-mute: #5b6775;
+      --accent: #5eead4;
+      --accent-dim: #2dd4bf;
+      --good: #4ade80;
+      --good-bg: rgba(74, 222, 128, 0.10);
+      --warn: #fbbf24;
+      --warn-bg: rgba(251, 191, 36, 0.10);
+      --bad: #f87171;
+      --bad-bg: rgba(248, 113, 113, 0.12);
+      --info: #60a5fa;
+      --info-bg: rgba(96, 165, 250, 0.10);
+      --neutral: #94a3b8;
+      --neutral-bg: rgba(148, 163, 184, 0.10);
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ---------- Masthead ---------- */
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #134e4a 0%, #0f766e 50%, #115e59 100%);
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 14px;
+      box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.25), 0 0 24px rgba(45, 212, 191, 0.12);
+      letter-spacing: 0.5px;
+    }
+    .brand-name {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .brand-name small {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 400;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .system-summary {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+    }
+    .summary-item {
+      text-align: right;
+    }
+    .summary-item .v {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .summary-item .l {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .pulse {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--good);
+      font-family: var(--mono);
+    }
+    .pulse .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--good);
+      box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+      70%  { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+    }
+
+    /* ---------- Layout ---------- */
+    .grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 920px) {
+      .grid { grid-template-columns: 1fr; }
+      .masthead { flex-direction: column; align-items: flex-start; }
+      .system-summary { width: 100%; justify-content: space-between; }
+    }
+
+    .card {
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-elev-2);
+    }
+    .card-header h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+    }
+    .card-header .meta {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-mute);
+    }
+    .card-body { padding: 0; }
+
+    /* ---------- Table ---------- */
+    table.workers {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.workers th,
+    table.workers td {
+      padding: 12px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    table.workers tr:last-child td { border-bottom: none; }
+    table.workers th {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-mute);
+      background: var(--bg-elev-2);
+    }
+    table.workers tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+    .worker-name {
+      font-family: var(--mono);
+      font-weight: 600;
+      color: var(--text);
+    }
+    .worker-name .sub {
+      display: block;
+      margin-top: 2px;
+      font-family: var(--sans);
+      font-weight: 400;
+      font-size: 11px;
+      color: var(--text-mute);
+    }
+    .cost {
+      font-family: var(--mono);
+      text-align: right;
+      color: var(--text);
+    }
+    .cost .unit {
+      color: var(--text-mute);
+      font-size: 11px;
+      margin-left: 2px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-family: var(--sans);
+      line-height: 1;
+    }
+    .badge .pdot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: currentColor;
+    }
+    .badge.running { color: var(--good);  background: var(--good-bg); }
+    .badge.idle    { color: var(--neutral); background: var(--neutral-bg); }
+    .badge.draining{ color: var(--warn);  background: var(--warn-bg); }
+    .badge.error   { color: var(--bad);   background: var(--bad-bg); }
+    .badge.starting{ color: var(--info);  background: var(--info-bg); }
+    .badge.completed { color: var(--good); background: var(--good-bg); }
+    .badge.failed    { color: var(--bad);  background: var(--bad-bg); }
+    .badge.canceled  { color: var(--neutral); background: var(--neutral-bg); }
+    .badge.queued    { color: var(--info); background: var(--info-bg); }
+
+    /* ---------- Run list ---------- */
+    .runs {
+      display: flex;
+      flex-direction: column;
+    }
+    .run {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .run:last-child { border-bottom: none; }
+    .run .id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-mute);
+      background: var(--bg-elev-2);
+      padding: 3px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    .run .name {
+      font-size: 13px;
+      color: var(--text);
+    }
+    .run .name .sub {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--text-mute);
+      font-family: var(--mono);
+    }
+    .run .right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    .run .duration {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ---------- Feed ---------- */
+    .feed {
+      max-height: 420px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+    .feed::-webkit-scrollbar { width: 8px; }
+    .feed::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+    .feed-entry {
+      display: grid;
+      grid-template-columns: 72px 80px 1fr;
+      gap: 10px;
+      padding: 8px 18px;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+      animation: fadeIn 0.4s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); background: rgba(94, 234, 212, 0.06); }
+      to   { opacity: 1; transform: translateY(0); background: transparent; }
+    }
+    .feed-entry .ts { color: var(--text-mute); font-size: 11.5px; }
+    .feed-entry .lvl {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      text-align: center;
+      font-weight: 600;
+      align-self: center;
+    }
+    .feed-entry .lvl.info  { color: var(--info);    background: var(--info-bg); }
+    .feed-entry .lvl.ok    { color: var(--good);    background: var(--good-bg); }
+    .feed-entry .lvl.warn  { color: var(--warn);    background: var(--warn-bg); }
+    .feed-entry .lvl.err   { color: var(--bad);     background: var(--bad-bg); }
+    .feed-entry .msg { color: var(--text); word-break: break-word; }
+    .feed-entry .msg .who { color: var(--accent); }
+    .feed-entry .msg .ref { color: var(--text-dim); }
+
+    footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-mute);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <header class="masthead">
+      <div class="brand">
+        <div class="brand-mark">CI</div>
+        <div class="brand-name">
+          CICADA
+          <small>Coordinated Intelligence for Concurrent Agent Dispatch</small>
+        </div>
+      </div>
+      <div class="system-summary">
+        <div class="summary-item">
+          <div class="v" id="active-count">6</div>
+          <div class="l">Active</div>
+        </div>
+        <div class="summary-item">
+          <div class="v" id="queue-count">3</div>
+          <div class="l">Queued</div>
+        </div>
+        <div class="summary-item">
+          <div class="v" id="cost-rate">$0.42<span class="unit" style="color:var(--text-mute);font-size:11px;">/min</span></div>
+          <div class="l">Burn Rate</div>
+        </div>
+        <div class="pulse"><span class="dot"></span><span>live</span></div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Workers + Recent runs stacked on left -->
+      <div style="display:flex; flex-direction:column; gap:20px;">
+
+        <section class="card" aria-labelledby="workers-h">
+          <div class="card-header">
+            <h2 id="workers-h">Workers</h2>
+            <span class="meta" id="workers-meta">8 nodes &middot; 3 zones</span>
+          </div>
+          <div class="card-body">
+            <table class="workers" id="workers-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>State</th>
+                  <th style="text-align:right;">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="worker-name">alpha-7<span class="sub">us-east-1 &middot; llm-router</span></span></td>
+                  <td><span class="badge running"><span class="pdot"></span>Running</span></td>
+                  <td class="cost">$0.062<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">echo-3<span class="sub">us-east-1 &middot; planner</span></span></td>
+                  <td><span class="badge running"><span class="pdot"></span>Running</span></td>
+                  <td class="cost">$0.048<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">nymph-2<span class="sub">us-west-2 &middot; coder</span></span></td>
+                  <td><span class="badge idle"><span class="pdot"></span>Idle</span></td>
+                  <td class="cost">$0.000<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">hive-1<span class="sub">us-west-2 &middot; retriever</span></span></td>
+                  <td><span class="badge running"><span class="pdot"></span>Running</span></td>
+                  <td class="cost">$0.031<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">brood-9<span class="sub">eu-central-1 &middot; coder</span></span></td>
+                  <td><span class="badge error"><span class="pdot"></span>Error</span></td>
+                  <td class="cost">&mdash;</td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">sentinel-4<span class="sub">eu-central-1 &middot; guardrail</span></span></td>
+                  <td><span class="badge starting"><span class="pdot"></span>Starting</span></td>
+                  <td class="cost">$0.014<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">forge-6<span class="sub">us-east-1 &middot; executor</span></span></td>
+                  <td><span class="badge draining"><span class="pdot"></span>Draining</span></td>
+                  <td class="cost">$0.022<span class="unit">/min</span></td>
+                </tr>
+                <tr>
+                  <td><span class="worker-name">cicada-prime<span class="sub">us-east-1 &middot; orchestrator</span></span></td>
+                  <td><span class="badge running"><span class="pdot"></span>Running</span></td>
+                  <td class="cost">$0.084<span class="unit">/min</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="runs-h">
+          <div class="card-header">
+            <h2 id="runs-h">Recent Runs</h2>
+            <span class="meta">last 24h &middot; 412 total</span>
+          </div>
+          <div class="card-body">
+            <div class="runs">
+              <div class="run">
+                <span class="id">r_8f3a91</span>
+                <div class="name">repository-summarization-batch
+                  <span class="sub">started 14m ago &middot; workflow=v2.3</span>
+                </div>
+                <div class="right">
+                  <span class="badge running"><span class="pdot"></span>Running</span>
+                  <span class="duration">14m 02s</span>
+                </div>
+              </div>
+              <div class="run">
+                <span class="id">r_8f3a07</span>
+                <div class="name">customer-ticket-triage
+                  <span class="sub">started 38m ago &middot; workflow=v2.3</span>
+                </div>
+                <div class="right">
+                  <span class="badge completed"><span class="pdot"></span>Completed</span>
+                  <span class="duration">3m 12s</span>
+                </div>
+              </div>
+              <div class="run">
+                <span class="id">r_8f3992</span>
+                <div class="name">sql-migration-validation
+                  <span class="sub">started 1h ago &middot; workflow=v2.2</span>
+                </div>
+                <div class="right">
+                  <span class="badge failed"><span class="pdot"></span>Failed</span>
+                  <span class="duration">0m 47s</span>
+                </div>
+              </div>
+              <div class="run">
+                <span class="id">r_8f38d4</span>
+                <div class="name">weekly-newsletter-draft
+                  <span class="sub">started 2h ago &middot; workflow=v2.3</span>
+                </div>
+                <div class="right">
+                  <span class="badge completed"><span class="pdot"></span>Completed</span>
+                  <span class="duration">7m 41s</span>
+                </div>
+              </div>
+              <div class="run">
+                <span class="id">r_8f37fa</span>
+                <div class="name">schema-doc-renderer
+                  <span class="sub">started 3h ago &middot; workflow=v2.1</span>
+                </div>
+                <div class="right">
+                  <span class="badge canceled"><span class="pdot"></span>Canceled</span>
+                  <span class="duration">1m 02s</span>
+                </div>
+              </div>
+              <div class="run">
+                <span class="id">r_8f36b1</span>
+                <div class="name">log-anomaly-sweep
+                  <span class="sub">started 5h ago &middot; workflow=v2.3</span>
+                </div>
+                <div class="right">
+                  <span class="badge queued"><span class="pdot"></span>Queued</span>
+                  <span class="duration">&mdash;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Activity feed on right -->
+      <section class="card" aria-labelledby="feed-h">
+        <div class="card-header">
+          <h2 id="feed-h">Activity Feed</h2>
+          <span class="meta" id="feed-meta">stream: cicada.global</span>
+        </div>
+        <div class="card-body">
+          <div class="feed" id="feed" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      <span>build 2026.08.28 &middot; sha 9a3f1c2 &middot; region multi</span>
+      <span id="last-refresh">refreshed just now</span>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ---------- Seed the feed with believable recent events ----------
+      const SEED = [
+        { t: -62,  level: 'ok',   who: 'autoscale', msg: 'increased pool llm-router from 4 to 5 (cpu 78%)' },
+        { t: -49,  level: 'info', who: 'echo-3',    msg: 'completed sub-task plan_refine (1.2s, 412 tokens)' },
+        { t: -41,  level: 'info', who: 'r_8f3a91',  msg: 'step 7/12 &mdash; retrieving context shards' },
+        { t: -33,  level: 'warn', who: 'brood-9',   msg: 'uncaught tool error &mdash; retrying with backoff (3/5)' },
+        { t: -22,  level: 'ok',   who: 'r_8f3a07',  msg: 'run completed successfully &mdash; 3m 12s, $0.18' },
+        { t: -15,  level: 'info', who: 'hive-1',    msg: 'heartbeat ok &mdash; queue depth 2' },
+        { t: -9,   level: 'info', who: 'sentinel-4',msg: 'cold-start complete &mdash; accepting work' },
+        { t: -3,   level: 'ok',   who: 'budget',    msg: 'daily spend 64% of cap &mdash; on track' },
+      ];
+
+      const FEED_EL = document.getElementById('feed');
+      const REFRESH_EL = document.getElementById('last-refresh');
+
+      function nowHMS() {
+        const d = new Date();
+        return d.toTimeString().slice(0, 8);
+      }
+
+      function relativeT(secondsAgo) {
+        if (secondsAgo < 5)  return 'just now';
+        if (secondsAgo < 60) return secondsAgo + 's ago';
+        const m = Math.floor(secondsAgo / 60);
+        const s = secondsAgo % 60;
+        if (m < 60) return m + 'm ' + (s ? s + 's' : '') + ' ago';
+        const h = Math.floor(m / 60);
+        return h + 'h ' + (m % 60) + 'm ago';
+      }
+
+      function escapeHTML(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function renderFeed() {
+        FEED_EL.innerHTML = SEED
+          .slice()
+          .sort(function (a, b) { return b.t - a.t; })
+          .map(function (e) {
+            return (
+              '<div class="feed-entry">' +
+                '<span class="ts">' + escapeHTML(relativeT(e.t)) + '</span>' +
+                '<span class="lvl ' + escapeHTML(e.level) + '">' + escapeHTML(e.level) + '</span>' +
+                '<span class="msg"><span class="who">' + escapeHTML(e.who) + '</span> &middot; ' + e.msg + '</span>' +
+              '</div>'
+            );
+          })
+          .join('');
+      }
+
+      renderFeed();
+
+      // ---------- Generate fresh events on a timer ----------
+      const WHO = ['alpha-7', 'echo-3', 'hive-1', 'cicada-prime', 'autoscale', 'budget', 'r_8f3a91', 'r_8f36b1'];
+      const LEVELS = [
+        { w: 5, v: 'info' },
+        { w: 3, v: 'ok' },
+        { w: 1, v: 'warn' },
+        { w: 1, v: 'err'  },
+      ];
+      function pickLevel() {
+        const pool = [];
+        LEVELS.forEach(function (l) { for (let i = 0; i < l.w; i++) pool.push(l.v); });
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+
+      const MESSAGES = {
+        info: [
+          'heartbeat ok &mdash; queue depth {N}',
+          'step {A}/{B} &mdash; composing response',
+          'token batch flushed (cache hit 87%)',
+          'tool call <span class="ref">web.search</span> returned 8 results',
+          'shard fetch complete &mdash; {N} documents',
+          'rate limit headroom 64%',
+        ],
+        ok: [
+          'run completed successfully &mdash; {D}s, ${C}',
+          'autoscale decreased pool coder from 6 to 5',
+          'cache warmed &mdash; 2,341 entries',
+          'sub-task finished &mdash; {N} steps in {D}s',
+        ],
+        warn: [
+          'retrying after timeout (attempt {A}/3)',
+          'latency p95 crossed threshold (1.4s)',
+          'budget pacing &mdash; 78% of hourly cap consumed',
+          'worker busy for {D}m &mdash; consider scaling',
+        ],
+        err: [
+          'tool call <span class="ref">db.query</span> failed &mdash; connection reset',
+          'sub-task aborted &mdash; upstream returned 502',
+          'validation failed on step {A} &mdash; schema drift detected',
+        ],
+      };
+
+      function pick(level) {
+        const arr = MESSAGES[level];
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      function fillTemplate(t) {
+        return t
+          .replace('{N}', Math.floor(Math.random() * 12) + 1)
+          .replace('{A}', Math.floor(Math.random() * 9) + 1)
+          .replace('{B}', Math.floor(Math.random() * 9) + 10)
+          .replace('{D}', (Math.random() * 6 + 0.4).toFixed(1))
+          .replace('{C}', (Math.random() * 0.6 + 0.05).toFixed(3));
+      }
+
+      // Walk seed timestamps forward so the page always feels "current".
+      let tick = 0;
+      function advance() {
+        // age the seed events a bit each tick so "xs ago" stays believable
+        for (let i = 0; i < SEED.length; i++) SEED[i].t += 1;
+      }
+
+      function pushEvent() {
+        const level = pickLevel();
+        const who = WHO[Math.floor(Math.random() * WHO.length)];
+        const msg = fillTemplate(pick(level));
+        SEED.push({ t: 0, level: level, who: who, msg: msg });
+        // cap history
+        while (SEED.length > 60) SEED.shift();
+        renderFeed();
+      }
+
+      function updateRefresh() {
+        REFRESH_EL.textContent = 'refreshed ' + nowHMS();
+      }
+
+      // Initial staleness nudge + tick loop
+      advance();
+      renderFeed();
+      updateRefresh();
+
+      setInterval(function () {
+        advance();
+        if (Math.random() < 0.7) pushEvent();   // ~70% of ticks produce a new event
+        updateRefresh();
+      }, 3000);
+    })();
+  </script>
+</body>
+</html>
