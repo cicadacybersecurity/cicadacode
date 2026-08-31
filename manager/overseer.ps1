@@ -165,7 +165,7 @@ function Invoke-IntentDecode([string]$text, [string]$rosterNames) {
     $sys = "You are the command decoder for a worker-fleet overseer bot. The operator types free-form messages about workers identified by callsigns. Decode into a JSON object with exactly these keys: action (one of: interrupt, steer, query, doing, status, fleet, detect, none), target (the worker callsign mentioned, or empty string), text (the message to deliver, or empty string). Rules: steer = the message is FOR the worker to act on - an instruction, a task, or a question the worker itself should answer in its next turn (examples: ask alpha whats next to implement, tell bravo to run the tests, get charlie to fix the gate, alpha do phase 7). Put the operator's actual instruction in text, phrased as a message to the worker, minus the leading callsign/ask/tell phrasing. doing = ONLY a live state check (is X busy right now, what is X mid-way through) - never a question the worker should answer. query = the operator wants YOU to answer from the worker's session history WITHOUT messaging it (what did X finish, why did X fail). Golden rule: if the words could be typed into the worker's own console for it to act on, choose steer; when in doubt between steer and anything else, choose steer. interrupt = only when the operator explicitly wants to abort the worker's current in-flight turn. status/fleet = whole-fleet overview. detect = rescan for workers. none = not about the fleet at all. Live workers: " + $rosterNames + ". Reply with ONLY the JSON object - no markdown fences, no commentary."
     $body = @{ model = ($Model -replace "^minimax/", ""); messages = @(@{ role = "system"; content = $sys }, @{ role = "user"; content = $text }); temperature = 0; max_tokens = 200 } | ConvertTo-Json -Depth 10
     try {
-        $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 60
+        $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 20
         $t = [string]$resp.choices[0].message.content
         $t = [regex]::Replace($t, "(?s)<think>.*?</think>", "").Trim()
         $t = $t -replace '(?s)^```(json)?', '' -replace '```\s*$', ''
@@ -771,6 +771,16 @@ while ($true) {
                 Invoke-IntentDecode `
                     $txt `
                     $names
+
+            # fleet fix v2.5: never swallow a free-form message silently.
+            if (-not $decoded) {
+                Send-OverseerTelegram ("could not decode that - the decoder API failed or timed out (see overseer console). To send without the decoder: /prompt Alpha <message> or Alpha: <message>")
+                continue
+            }
+            if (-not [string]$decoded.action -or [string]$decoded.action -eq "none") {
+                Send-OverseerTelegram ("not recognised as a fleet command - nothing done. Direct send: /prompt Alpha <message>; commands: /detect /fleet /status /doing <name> /interrupt <name> <advice>")
+                continue
+            }
 
             if (
                 $decoded -and

@@ -1,18 +1,1 @@
-﻿{
-    "workers":  {
-                    "1":  {
-                              "title":  "worker-1",
-                              "port":  4317,
-                              "pid":  44564,
-                              "task":  "implement phase 14",
-                              "session":  "ses_fac4c291effeB5pOlj0thvIvts",
-                              "model":  "minimax/MiniMax-M3",
-                              "agent":  "",
-                              "state":  "idle",
-                              "log":  "C:\\Users\\David\\minimax-agents\\state\\logs\\w1-20260831-163405.jsonl",
-                              "updated":  "2026-08-31T16:47:36.6012732Z",
-                              "project":  "C:\\Users\\David\\Desktop\\contentgen",
-                              "started":  "2026-08-30T17:24:48.4233327Z"
-                          }
-                }
-}
+﻿{ "workers": {} }
