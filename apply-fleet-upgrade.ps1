@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-apply-fleet-upgrade.ps1 - make the 4-console + overseer workflow one command.
+apply-fleet-upgrade.ps1 - make the 4-console + overseer workflow one command. v3
 Run once from the CICADA root (folder containing agent.ps1):
 
     powershell -ExecutionPolicy Bypass -File .\apply-fleet-upgrade.ps1
@@ -8,32 +8,36 @@ Run once from the CICADA root (folder containing agent.ps1):
 Fixes in manager\overseer.ps1:
   1. adoption bug: every console numbers its worker "worker-1" and the overseer
      deduped by worker id, so only ONE of your four workers was ever adopted.
-     Now: one worker per port, renumbered in detection order (Alpha, Bravo...).
   2. /detect replay storm: the slash-command handler relayed a summary for EVERY
      historical assistant message instead of baselining. Now it primes quietly.
-  3. adds -AutoDetect (-ExpectWorkers N, -AutoDetectTimeoutSec): the overseer
-     waits for consoles to boot, adopts the fleet, baselines, posts the roster -
-     you never type /detect by hand again.
+  3. -AutoDetect (-ExpectWorkers N, -AutoDetectTimeoutSec): the overseer waits
+     for consoles to boot, adopts the fleet, baselines, posts the roster - you
+     never type /detect by hand again.
   4. overseer window title: "CICADA overseer (Telegram)".
   5. summary format: worker replies arrive as plain-English CHANGED / NEXT /
      NEEDS YOU / SUGGESTION - the suggestion is a message you can send back
      verbatim (the existing 'yes' reply already does exactly that).
-
-Fix in manager\console.ps1:
-  5. each console window titles itself "CICADA console - <project>".
-
-Add to agent.ps1:
-  6. "Fleet up" menu entry (and -Mode fleet): overseer-only auto-detect for
-     consoles you started yourself, or full launch from fleet.json.
-
-  7. overseer detection rework (the "5 workers when I have 3" fix): a worker's
-     identity is its SESSION - the same session listed on two ports is adopted
-     once; zombie opencode servers orphaned by closed console windows are
+  6. DETECTION REWORK (the "5 workers when I have 3" fix): full replacement of
+     Find-LiveWorkers, anchored on the function's structural edges so it does
+     not care about internal drift. A worker's identity is its SESSION - the
+     same session listed on two ports is adopted once (that was your Alpha+Bravo
+     duplicate); zombie opencode servers orphaned by closed console windows are
      skipped; sessions idle over -MaxSessionAgeHours (default 6) are ignored.
 
-Same safety model as apply-hardening.ps1: git baseline first, exact anchors
-verified once each, syntax check before writing, idempotent.
-Rollback:  git checkout -- manager
+Fix in manager\console.ps1:
+  - each console window titles itself "CICADA console - <project>".
+
+Add to agent.ps1:
+  - "Fleet up" menu entry (and -Mode fleet): overseer-only auto-detect for
+    consoles you started yourself, or full launch from fleet.json.
+
+Same safety model as apply-hardening.ps1: git baseline first, anchors verified
+(exactly one match each), syntax check before writing, idempotent.
+Rollback:  git checkout -- manager agent.ps1
+
+v3: the detection rework replaces the whole Find-LiveWorkers function via its
+    structural boundaries instead of matching an interior block - immune to
+    drift between the zip and your live copy.
 #>
 [CmdletBinding()]
 param([switch]$SkipGit)
@@ -42,7 +46,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if (-not (Test-Path (Join-Path $root "manager\overseer.ps1")) -or
-    -not (Test-Path (Join-Path $root "manager\console.ps1"))) {
+    -not (Test-Path (Join-Path $root "manager\console.ps1")) -or
+    -not (Test-Path (Join-Path $root "agent.ps1"))) {
     Write-Error "Run me from the CICADA root (the folder containing agent.ps1)."
     exit 1
 }
@@ -219,66 +224,42 @@ if ($Mode -eq "fleet") {
 
 '@
 
-# O8/O9 anchors are long literal blocks from the live file - build tolerant
-# regexes from them (escape everything, then make line endings flexible).
-function ConvertTo-CicadaPattern([string]$literal) {
-    $norm = $literal -replace "`r?`n", "`r`n"
-    $esc = [regex]::Escape($norm)
-    return ($esc -replace '\\\\r\\\\n', '\r?\n')
-}
-
-$o8Anchor = @'
-            $workerSession = @(
-                $sessions |
-                Where-Object {
-                    [string]$_.title -match '^worker-\d+$'
-                } |
-                Sort-Object { [long]$_.time.updated } -Descending |
-                Select-Object -First 1
-            )
-
-            if ($workerSession.Count -eq 0) {
-                continue
-            }
-
-            $sess = $workerSession[0]
-
-            $workerId = (
-                [regex]::Match(
-                    [string]$sess.title,
-                    '^worker-(\d+)$'
-                )
-            ).Groups[1].Value
-
-            if (-not $workerId) {
-                continue
-            }
-
-            $found += @{
-                id = $workerId
-                name = (Get-Callsign $workerId)
-                url = $url
-                session = [string]$sess.id
-                project = [string]$sess.directory
-            }
-'@
-
 $o8Text = @'
-            # fleet fix v2: opencode stores sessions per PROJECT, so every serve
-            # instance of one project lists the same sessions. Collect ALL recent
-            # worker sessions here; the dedupe after the port loop keys on
-            # session id, so one worker can never be adopted twice.
-            # Also skip orphaned serves: an opencode server whose parent console
-            # window is gone is a zombie from an old run.
-            $owningPid = [int]$conn.OwningProcess
-            $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningPid) -ErrorAction SilentlyContinue
-            if ($owningProc) {
-                $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
-                if (-not $parentProc) {
-                    Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
-                    continue
-                }
+function Find-LiveWorkers {
+    # fleet fix v2: opencode stores sessions per PROJECT, so every serve instance
+    # of one project lists the same sessions. A worker's identity is its SESSION,
+    # not its port - the same session on two ports is one worker (first port
+    # wins). Orphaned serves (console window closed, server still listening) and
+    # sessions idle over $MaxSessionAgeHours are skipped.
+    $found = @()
+
+    $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.LocalAddress -eq "127.0.0.1" -and
+            $_.LocalPort -ge 4311 -and
+            $_.LocalPort -le 4320
+        } |
+        Sort-Object LocalPort -Unique
+
+    foreach ($conn in @($ports)) {
+        $port = [int]$conn.LocalPort
+        $url = "http://127.0.0.1:" + $port
+
+        # zombie check: a serve process whose parent console is gone is a corpse
+        $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$conn.OwningProcess) -ErrorAction SilentlyContinue
+        if ($owningProc) {
+            $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+            if (-not $parentProc) {
+                Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
+                continue
             }
+        }
+
+        try {
+            $sessions = Invoke-RestMethod `
+                -Method Get `
+                -Uri ($url + "/session") `
+                -TimeoutSec 5
 
             $workerSessions = @(
                 $sessions |
@@ -307,12 +288,12 @@ $o8Text = @'
                     project = [string]$sess.directory
                 }
             }
-'@
+        }
+        catch {}
+    }
 
-$o9Text = @'
-    # fleet fix v2: a worker's identity is its SESSION, not its port - the same
-    # session can appear on every port of a project (shared per-project storage).
-    # First port wins; callsigns follow ascending port order.
+    # dedupe by session id; ports were scanned ascending, so first port wins and
+    # callsigns follow port order
     $seen = @{}
     $bySession = @()
     foreach ($fw in $found) {
@@ -328,6 +309,8 @@ $o9Text = @'
         $fw.name = (Get-Callsign $fw.id)
     }
     return $bySession
+}
+
 '@
 
 $c1Text = @'
@@ -387,13 +370,9 @@ $patches = @(
        Mode = "After"; Marker = 'MaxSessionAgeHours'
        Text = ",`r`n    [double]`$MaxSessionAgeHours = 6" },
 
-    @{ File = "manager\overseer.ps1"; Name = "overseer: detection adopts sessions, skips zombies + stale"
-       Pattern = (ConvertTo-CicadaPattern $o8Anchor)
-       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text },
-
-    @{ File = "manager\overseer.ps1"; Name = "overseer: dedupe by session id (no double-adopted workers)"
-       Pattern = (ConvertTo-CicadaPattern $o2Text)
-       Mode = "Replace"; Marker = "fleet fix v2: a worker's identity is its SESSION"; Text = $o9Text }
+    @{ File = "manager\overseer.ps1"; Name = "overseer: Find-LiveWorkers full rework (session identity, zombie + stale skip)"
+       Pattern = 'function Find-LiveWorkers \{[\s\S]*?\r?\n\}\r?\n(?=\s*function Resolve-WorkerTarget)'
+       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text }
 )
 
 # ---------------- apply (in memory; write only if everything verifies) --------
@@ -454,16 +433,14 @@ if ($skipped.Count -gt 0) { foreach ($s in $skipped) { Write-Host ("  skip (alre
 foreach ($a in $applied) { Write-Host ("  patched: " + $a) -ForegroundColor Green }
 Write-Host ""
 Write-Host "Fleet upgrade complete." -ForegroundColor Green
-Write-Host "  overseer.ps1 - adopts one worker per port (all 4 consoles visible), renumbers Alpha/Bravo/... in detection order"
-Write-Host "  overseer.ps1 - /detect baselines quietly instead of replaying history"
-Write-Host "  overseer.ps1 - -AutoDetect mode + window title"
+Write-Host "  overseer.ps1 - one worker per port, quiet /detect, -AutoDetect, window title, plain-English reports"
+Write-Host "  overseer.ps1 - detection rework: one session = one worker, zombie + stale sessions skipped"
 Write-Host "  console.ps1  - window titled per project"
 Write-Host "  agent.ps1    - 'Fleet up' menu entry (and -Mode fleet)"
-Write-Host "  overseer.ps1 - detection rework: one session = one worker, zombies + stale sessions skipped"
 Write-Host ""
 Write-Host "Next: .\agent.ps1 and pick 'Fleet up' - or run .\fleet.ps1 directly" -ForegroundColor Cyan
 Write-Host ""
 if ($script:GitBaselineOk) {
-    Write-Host "Review:   git diff manager"
-    Write-Host "Rollback: git checkout -- manager" -ForegroundColor DarkGray
+    Write-Host "Review:   git diff manager agent.ps1"
+    Write-Host "Rollback: git checkout -- manager agent.ps1" -ForegroundColor DarkGray
 }
