@@ -60,10 +60,20 @@ function Invoke-OverseerSummary([string]$workerText, [string]$who) {
     }
 }
 function Send-WorkerText([string]$url, [string]$session, [string]$text) {
-    $exe = Resolve-OpenCodeExe
-    $logf = Join-Path $env:TEMP ("overseer-send-" + [guid]::NewGuid().ToString("n") + ".log")
+    # fleet fix v2.4: direct HTTP delivery to the opencode serve API with REAL
+    # confirmation. The old CLI spawn (opencode run --attach ...) was fire-and-
+    # forget: "sent to X" printed even when the subprocess died instantly with
+    # its error discarded. Returns $true only when the server accepted the text.
     $flat = $text -replace "`r?`n", " "
-    Start-Process -FilePath $exe -ArgumentList @("run", "--attach", $url, "--session", $session, "--", $flat) -WindowStyle Hidden -RedirectStandardOutput $logf
+    $body = @{ parts = @(@{ type = "text"; text = $flat }) } | ConvertTo-Json -Depth 6
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+    try {
+        [void](Invoke-RestMethod -Method Post -Uri ($url + "/session/" + $session + "/prompt_async") -ContentType "application/json; charset=utf-8" -Body $bytes -TimeoutSec 10)
+        return $true
+    } catch {
+        Write-Host ("  send failed (" + $url + "): " + $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
 }
 function Invoke-WorkerInterrupt([string]$url, [string]$session, [string]$advice) {
     try { [void](Invoke-RestMethod -Method Post -Uri ($url + "/session/" + $session + "/abort") -TimeoutSec 15) } catch {}
@@ -538,10 +548,10 @@ while ($true) {
                 continue
             }
 
-            Send-WorkerText $wk2.url $wk2.session $message
+            $ok = Send-WorkerText $wk2.url $wk2.session $message
 
             Send-OverseerTelegram (
-                "sent directly to " +
+                $(if ($ok) { "sent directly to " } else { "DELIVERY FAILED to " }) +
                 $wk2.name +
                 " [" +
                 $wk2.project +
@@ -678,13 +688,13 @@ while ($true) {
 
             if ($wk2 -and $wk2.session) {
 
-                Send-WorkerText `
+                $ok = Send-WorkerText `
                     $wk2.url `
                     $wk2.session `
                     $body2
 
                 Send-OverseerTelegram (
-                    "sent to " +
+                    $(if ($ok) { "sent to " } else { "DELIVERY FAILED to " }) +
                     $wk2.name +
                     ": " +
                     $body2
@@ -723,13 +733,13 @@ while ($true) {
                 $sug2 -notmatch '^none needed'
             ) {
 
-                Send-WorkerText `
+                $ok = Send-WorkerText `
                     $wk2.url `
                     $wk2.session `
                     $sug2
 
                 Send-OverseerTelegram (
-                    "sent suggestion to " +
+                    $(if ($ok) { "sent suggestion to " } else { "DELIVERY FAILED to " }) +
                     $wk2.name +
                     ": " +
                     $sug2
@@ -825,13 +835,13 @@ while ($true) {
 
                     if ($wk2 -and $wk2.session) {
 
-                        Send-WorkerText `
+                        $ok = Send-WorkerText `
                             $wk2.url `
                             $wk2.session `
                             $body3
 
                         Send-OverseerTelegram (
-                            "sent to " +
+                            $(if ($ok) { "sent to " } else { "DELIVERY FAILED to " }) +
                             $wk2.name +
                             ": " +
                             $body3
@@ -1138,8 +1148,6 @@ while ($true) {
                 continue
             }
 
-            $lastHash[$wk.id] = $h
-
             Write-Host (
                 "[" +
                 (Get-Date -Format HH:mm:ss) +
@@ -1155,9 +1163,19 @@ while ($true) {
                     $text `
                     $wk.name
 
+            # fleet fix v2.4: never silently drop a reply. If the summarizer
+            # fails, relay the raw text (truncated); mark seen only when there
+            # is something to send.
             if (-not $sum) {
-                continue
+                $sum = $text
+                if ($sum.Length -gt 900) {
+                    $sum = $sum.Substring(0, 900) + "`n...[truncated; summary API failed]"
+                } else {
+                    $sum = $sum + "`n[raw relay - summary API failed]"
+                }
             }
+
+            $lastHash[$wk.id] = $h
 
             $sug = ""
 
