@@ -42,7 +42,7 @@ function Send-OverseerTelegram([string]$text) {
 function Send-OverseerMenu([string]$text, $rows) {
     # fleet fix v2.7: persistent reply keyboard - stays pinned above the input
     # box until Hide; buttons send their label as text (rides the command paths)
-    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ keyboard = @($rows); resize_keyboard = $true; is_persistent = $true } } | ConvertTo-Json -Depth 10
+    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ keyboard = @($rows); is_persistent = $true } } | ConvertTo-Json -Depth 10
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
     } catch { Write-Host ("  telegram menu send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
@@ -57,7 +57,7 @@ function Get-WorkerMenu($fleet) {
     $rows = New-Object System.Collections.ArrayList
     $row = New-Object System.Collections.ArrayList
     foreach ($w in @($fleet)) {
-        if ($row.Count -ge 2) { [void]$rows.Add($row.ToArray()); $row = New-Object System.Collections.ArrayList }
+        if ($row.Count -ge 4) { [void]$rows.Add($row.ToArray()); $row = New-Object System.Collections.ArrayList }
         [void]$row.Add(@{ text = $w.name })
     }
     if ($row.Count -gt 0) { [void]$rows.Add($row.ToArray()) }
@@ -66,8 +66,10 @@ function Get-WorkerMenu($fleet) {
 }
 function Get-WorkerCommandMenu([string]$id, [string]$name) {
     $rows = New-Object System.Collections.ArrayList
-    [void]$rows.Add(@(@{ text = ("Message " + $name) }, @{ text = ("Next " + $name) }))
-    [void]$rows.Add(@(@{ text = ("Status " + $name) }, @{ text = ("Interrupt " + $name) }))
+    [void]$rows.Add(@(@{ text = ("Message " + $name) }))
+    [void]$rows.Add(@(@{ text = ("Next " + $name) }))
+    [void]$rows.Add(@(@{ text = ("Status " + $name) }))
+    [void]$rows.Add(@(@{ text = ("Interrupt " + $name) }))
     [void]$rows.Add(@(@{ text = "Back" }, @{ text = "Hide" }))
     return $rows
 }
