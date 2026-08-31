@@ -3,7 +3,10 @@
     [string]$StateFile = "",
     [string]$Model = "minimax/MiniMax-M2.7",
     [int]$PollSeconds = 2,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$AutoDetect,
+    [int]$ExpectWorkers = 0,
+    [int]$AutoDetectTimeoutSec = 180
 )
 # overseer.ps1 - the Telegram manager for the parallel worker fleet.
 # v5: free-form messages are decoded by the cheap model into actions; v4's
@@ -264,10 +267,18 @@ function Find-LiveWorkers {
         catch {}
     }
 
-    return @(
-        $found |
-        Sort-Object { [int]$_.id } -Unique
-    )
+    # fleet fix: multiple consoles each number their worker "worker-1" - key by
+    # port (one worker per port), then renumber in detection order so callsigns
+    # Alpha, Bravo, Charlie... are unique across the whole fleet.
+    $byPort = @($found | Sort-Object { [string]$_.url } -Unique)
+    $byPort = @($byPort | Sort-Object { [int]([uri]([string]$_.url)).Port })
+    $seq = 0
+    foreach ($fw in $byPort) {
+        $seq++
+        $fw.id = [string]$seq
+        $fw.name = (Get-Callsign $fw.id)
+    }
+    return $byPort
 }
 function Resolve-WorkerTarget([string]$target, $fleet) {
     return ($fleet | Where-Object { $_.id -eq $target -or $_.name -ieq $target } | Select-Object -First 1)
@@ -319,6 +330,7 @@ function Get-FleetRoster($fleet) {
         ($roster -join "`n")
     )
 }
+try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
 Send-OverseerTelegram "overseer online - /detect adopts the fleet; /status /doing <name> /interrupt <name> <advice> work too."
@@ -329,6 +341,41 @@ $lastSuggested = @{}
 $lastRelayedWorker = $null
 $tgOffset = 0
 $workers = @()
+
+# fleet: optional startup auto-detect - wait for consoles to boot, adopt every
+# live worker, baseline quietly (no history replay), post the roster to Telegram.
+if ($AutoDetect) {
+    $deadline = (Get-Date).AddSeconds($AutoDetectTimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $detectedWorkers = Find-LiveWorkers
+        $workers = @($detectedWorkers)
+        if ($ExpectWorkers -gt 0 -and $workers.Count -ge $ExpectWorkers) { break }
+        if ($ExpectWorkers -le 0 -and $workers.Count -gt 0) { break }
+        Start-Sleep -Seconds ([Math]::Max(2, $PollSeconds))
+    }
+    $lastHash = @{}
+    foreach ($wk in @($workers)) {
+        if (-not $wk.session) { continue }
+        try {
+            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+            $pLast = $null
+            foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+            if ($pLast) {
+                $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                $pText = ($pParts -join "`n").Trim()
+                if ($pText) {
+                    $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                    $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                }
+            }
+        } catch {}
+    }
+    if ($workers.Count -eq 0) {
+        Send-OverseerTelegram "auto-detect: no live workers found yet - a worker appears once its console sends its first task; /detect anytime to adopt later ones."
+    } else {
+        Send-OverseerTelegram ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers))
+    }
+}
 
 while ($true) {
 
@@ -361,6 +408,24 @@ while ($true) {
             # from being immediately treated as a new reply.
             $lastHash = @{}
 
+            # fleet fix: prime with the watch loop's hash format so adoption is
+            # silent - only genuinely new replies relay from here on.
+            foreach ($wk in @($workers)) {
+                if (-not $wk.session) { continue }
+                try {
+                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+                    $pLast = $null
+                    foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
+                    if ($pLast) {
+                        $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
+                        $pText = ($pParts -join "`n").Trim()
+                        if ($pText) {
+                            $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
+                            $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
+                        }
+                    }
+                } catch {}
+            }
             foreach ($wk in @($workers)) {
                 if (-not $wk.session) { continue }
 

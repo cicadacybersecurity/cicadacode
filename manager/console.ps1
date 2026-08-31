@@ -39,7 +39,7 @@ $script:Jobs           = @{}
 if (-not $Project) { $Project = (Read-Host "Project").Trim() }
 if (-not (Test-Path $Project -PathType Container)) { Write-Error "Project directory does not exist: $Project"; exit 1 }
 $Project = (Resolve-Path $Project).Path
-
+try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
 # ---------- helpers ----------
 
 function Resolve-ModelName([string]$m) {

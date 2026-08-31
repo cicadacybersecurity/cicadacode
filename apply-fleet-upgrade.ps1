@@ -15,6 +15,9 @@ Fixes in manager\overseer.ps1:
      waits for consoles to boot, adopts the fleet, baselines, posts the roster -
      you never type /detect by hand again.
   4. overseer window title: "CICADA overseer (Telegram)".
+  5. summary format: worker replies arrive as plain-English CHANGED / NEXT /
+     NEEDS YOU / SUGGESTION - the suggestion is a message you can send back
+     verbatim (the existing 'yes' reply already does exactly that).
 
 Fix in manager\console.ps1:
   5. each console window titles itself "CICADA console - <project>".
@@ -182,6 +185,10 @@ try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 
 '@
 
+$o6Text = @'
+$sys = "You rewrite a worker agent's latest reply for the operator's Telegram chat. Plain English, short labeled lines, no jargon, no markdown, no filler. The worker follows a plan broken into phases; its reply says what it did and what comes next. Output EXACTLY these lines, in this order, nothing else: CHANGED: one or two plain sentences - what the worker actually did, built, or fixed this round; name real files, commands, or results when the reply mentions them. NEXT: what is left to do - the next phase or remaining plan items; if the worker is blocked or waiting for direction, say what it is waiting for; if the plan is finished, say plan complete. NEEDS YOU: include this line ONLY when the worker is blocked, errored, or needs a decision - one plain sentence on exactly what is needed from the operator. SUGGESTION: the single most useful short message the operator could send back verbatim, e.g. implement phase 14, or run the tests, or fix the failing validation; write exactly none needed if there is nothing useful to send. Never invent facts, progress, or blockers. If the reply is only a question or acknowledgement, CHANGED says so, NEXT says what you can tell, SUGGESTION answers it or says none needed.";
+'@
+
 $c1Text = @'
 try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
 '@
@@ -207,6 +214,10 @@ $patches = @(
     @{ File = "manager\overseer.ps1"; Name = "overseer: startup auto-detect"
        Pattern = '\$workers = @\(\)\r?\n\r?\n(?=while \(\$true\) \{)'
        Mode = "After"; Marker = 'fleet: optional startup auto-detect'; Text = $o4Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: plain-English summary format (CHANGED/NEXT/NEEDS YOU/SUGGESTION)"
+       Pattern = '\$sys = "You are the concise operational briefing layer[^\r\n]*";'
+       Mode = "Replace"; Marker = 'You rewrite a worker agent'; Text = $o6Text },
 
     @{ File = "manager\console.ps1"; Name = "console: window title per project"
        Pattern = '\$Project = \(Resolve-Path \$Project\)\.Path\r?\n'
