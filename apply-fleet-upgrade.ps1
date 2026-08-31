@@ -26,6 +26,11 @@ Add to agent.ps1:
   6. "Fleet up" menu entry (and -Mode fleet): overseer-only auto-detect for
      consoles you started yourself, or full launch from fleet.json.
 
+  7. overseer detection rework (the "5 workers when I have 3" fix): a worker's
+     identity is its SESSION - the same session listed on two ports is adopted
+     once; zombie opencode servers orphaned by closed console windows are
+     skipped; sessions idle over -MaxSessionAgeHours (default 6) are ignored.
+
 Same safety model as apply-hardening.ps1: git baseline first, exact anchors
 verified once each, syntax check before writing, idempotent.
 Rollback:  git checkout -- manager
@@ -214,6 +219,117 @@ if ($Mode -eq "fleet") {
 
 '@
 
+# O8/O9 anchors are long literal blocks from the live file - build tolerant
+# regexes from them (escape everything, then make line endings flexible).
+function ConvertTo-CicadaPattern([string]$literal) {
+    $norm = $literal -replace "`r?`n", "`r`n"
+    $esc = [regex]::Escape($norm)
+    return ($esc -replace '\\\\r\\\\n', '\r?\n')
+}
+
+$o8Anchor = @'
+            $workerSession = @(
+                $sessions |
+                Where-Object {
+                    [string]$_.title -match '^worker-\d+$'
+                } |
+                Sort-Object { [long]$_.time.updated } -Descending |
+                Select-Object -First 1
+            )
+
+            if ($workerSession.Count -eq 0) {
+                continue
+            }
+
+            $sess = $workerSession[0]
+
+            $workerId = (
+                [regex]::Match(
+                    [string]$sess.title,
+                    '^worker-(\d+)$'
+                )
+            ).Groups[1].Value
+
+            if (-not $workerId) {
+                continue
+            }
+
+            $found += @{
+                id = $workerId
+                name = (Get-Callsign $workerId)
+                url = $url
+                session = [string]$sess.id
+                project = [string]$sess.directory
+            }
+'@
+
+$o8Text = @'
+            # fleet fix v2: opencode stores sessions per PROJECT, so every serve
+            # instance of one project lists the same sessions. Collect ALL recent
+            # worker sessions here; the dedupe after the port loop keys on
+            # session id, so one worker can never be adopted twice.
+            # Also skip orphaned serves: an opencode server whose parent console
+            # window is gone is a zombie from an old run.
+            $owningPid = [int]$conn.OwningProcess
+            $owningProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningPid) -ErrorAction SilentlyContinue
+            if ($owningProc) {
+                $parentProc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $owningProc.ParentProcessId) -ErrorAction SilentlyContinue
+                if (-not $parentProc) {
+                    Write-Host ("  detect: skipping port " + $port + " - orphaned opencode server (its console window is closed)") -ForegroundColor DarkGray
+                    continue
+                }
+            }
+
+            $workerSessions = @(
+                $sessions |
+                Where-Object {
+                    [string]$_.title -match '^worker-\d+$'
+                } |
+                Sort-Object { [long]$_.time.updated } -Descending
+            )
+
+            foreach ($sess in $workerSessions) {
+                $ageHours = 999
+                try {
+                    $updMs = [long]$sess.time.updated
+                    if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
+                    $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
+                } catch {}
+                if ($ageHours -gt $MaxSessionAgeHours) {
+                    Write-Host ("  detect: skipping stale session on port " + $port + " (idle " + [math]::Round($ageHours, 1) + "h - raise -MaxSessionAgeHours to adopt it)") -ForegroundColor DarkGray
+                    continue
+                }
+                $found += @{
+                    id = "pending"
+                    name = ""
+                    url = $url
+                    session = [string]$sess.id
+                    project = [string]$sess.directory
+                }
+            }
+'@
+
+$o9Text = @'
+    # fleet fix v2: a worker's identity is its SESSION, not its port - the same
+    # session can appear on every port of a project (shared per-project storage).
+    # First port wins; callsigns follow ascending port order.
+    $seen = @{}
+    $bySession = @()
+    foreach ($fw in $found) {
+        $sid = [string]$fw.session
+        if ($seen.ContainsKey($sid)) { continue }
+        $seen[$sid] = $true
+        $bySession += $fw
+    }
+    $seq = 0
+    foreach ($fw in $bySession) {
+        $seq++
+        $fw.id = [string]$seq
+        $fw.name = (Get-Callsign $fw.id)
+    }
+    return $bySession
+'@
+
 $c1Text = @'
 try { $host.UI.RawUI.WindowTitle = "CICADA console - " + (Split-Path -Leaf $Project) } catch {}
 '@
@@ -264,7 +380,20 @@ $patches = @(
 
     @{ File = "agent.ps1"; Name = "agent: fleet handler (before the project prompt)"
        Pattern = 'if \(-not \$Project -and \$Mode -ne "pi" -and \$Mode -ne "debulk" -and \$Mode -ne "getskills" -and \$Mode -ne "overseer"\) \{ \$Project = \(Read-Host "Project \(e\.g\. C:\\Users\\David\\my-project\)"\)\.Trim\(\) \}'
-       Mode = "Before"; Marker = 'fleet: Telegram overseer for hand-started consoles'; Text = $a4Text }
+       Mode = "Before"; Marker = 'fleet: Telegram overseer for hand-started consoles'; Text = $a4Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: -MaxSessionAgeHours param"
+       Pattern = '    \[int\]\$AutoDetectTimeoutSec = 180'
+       Mode = "After"; Marker = 'MaxSessionAgeHours'
+       Text = ",`r`n    [double]`$MaxSessionAgeHours = 6" },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: detection adopts sessions, skips zombies + stale"
+       Pattern = (ConvertTo-CicadaPattern $o8Anchor)
+       Mode = "Replace"; Marker = 'fleet fix v2: opencode stores sessions per PROJECT'; Text = $o8Text },
+
+    @{ File = "manager\overseer.ps1"; Name = "overseer: dedupe by session id (no double-adopted workers)"
+       Pattern = (ConvertTo-CicadaPattern $o2Text)
+       Mode = "Replace"; Marker = "fleet fix v2: a worker's identity is its SESSION"; Text = $o9Text }
 )
 
 # ---------------- apply (in memory; write only if everything verifies) --------
@@ -330,6 +459,7 @@ Write-Host "  overseer.ps1 - /detect baselines quietly instead of replaying hist
 Write-Host "  overseer.ps1 - -AutoDetect mode + window title"
 Write-Host "  console.ps1  - window titled per project"
 Write-Host "  agent.ps1    - 'Fleet up' menu entry (and -Mode fleet)"
+Write-Host "  overseer.ps1 - detection rework: one session = one worker, zombies + stale sessions skipped"
 Write-Host ""
 Write-Host "Next: .\agent.ps1 and pick 'Fleet up' - or run .\fleet.ps1 directly" -ForegroundColor Cyan
 Write-Host ""
