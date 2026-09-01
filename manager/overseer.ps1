@@ -34,27 +34,14 @@ $chatId = [string]$s.OVERSEER_CHAT_ID; if (-not $chatId) { $chatId = [string]$s.
 if (-not $token -or -not $chatId) { Write-Error "no overseer bot configured - add OVERSEER_BOT_TOKEN and OVERSEER_CHAT_ID to manager\secrets.json"; exit 1 }
 
 function Send-OverseerTelegram([string]$text) {
-    # fleet fix v3.3: every message carries the inline fleet bar, so the buttons
-    # always float directly above the input box - no toggle, no pin. If the bar
-    # payload ever breaks a send, the message retries WITHOUT it (never lost).
-    $mk = $null
-    try {
-        if ($script:workers -and @($script:workers).Count -gt 0) {
-            $mk = @{ inline_keyboard = @(Get-WorkerInlineMenu $script:workers) }
-        }
-    } catch {}
-    $h = @{ chat_id = $chatId; text = $text }
-    if ($mk) { $h["reply_markup"] = $mk }
-    $body = $h | ConvertTo-Json -Depth 10
+    # fleet fix v3.4: keyboards retired - plain sends; the operator drives
+    # everything with shorthand commands (/<worker letter><action>).
+    $body = @{ chat_id = $chatId; text = $text } | ConvertTo-Json
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
-    } catch {
-        try {
-            $plain = @{ chat_id = $chatId; text = $text } | ConvertTo-Json
-            [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($plain)) -TimeoutSec 30)
-        } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
-    }
+    } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
 }
+
 function Send-OverseerMenu([string]$text, $rows) {
     # fleet fix v3.2: force the button panel to auto-OPEN above the input box.
     # Telegram clients remember a collapsed keyboard; removing it and instantly
@@ -467,9 +454,9 @@ function Get-FleetRoster($fleet) {
 try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
-Send-OverseerTelegram "overseer online - /detect adopts the fleet; /menu gives tap-buttons; /status /doing <name> /interrupt <name> <advice> work too."
+Send-OverseerTelegram "overseer online - /detect adopts the fleet; shorthand /<letter><action> (e.g. /am /bs /cn /di); /status /doing <name> /interrupt <name> <advice> work too."
 Remove-OverseerPinnedMenu   # fleet fix v3.1: clear any stale pinned menu
-Send-OverseerKeyboardRemove "buttons now float under every message - old toggle keyboard cleared"   # fleet fix v3.3
+Send-OverseerKeyboardRemove "keyboards off - shorthand: /am message Alpha, /bs status, /cn next, /di interrupt (/menu for help)"   # fleet fix v3.4
 
 $detectedWorkers = @()
 $lastHash = @{}
@@ -532,7 +519,7 @@ while ($true) {
             $cbData = [string]$cb.data
             Send-OverseerAnswerCallback ([string]$cb.id)
             if ($cbData -eq "menu:main") {
-                if (@($workers).Count -gt 0) { Send-OverseerTelegram "fleet menu - tap a button below:" }
+                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt (e.g. /am, /bs) - /menu for help" }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -540,7 +527,10 @@ while ($true) {
             elseif ($cbData -eq "menu:status") { $txt = "/status" }
             elseif ($cbData -match '^w:(\d+)$') {
                 $wkr = Resolve-WorkerTarget $Matches[1] $workers
-                if ($wkr) { Send-OverseerInlineMenu ($wkr.name + " - pick an action:") (Get-WorkerInlineCommandMenu $wkr.id $wkr.name) }
+                if ($wkr) {
+                    $wl = $wkr.name.Substring(0, 1).ToLower()
+                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt")
+                }
                 else { Send-OverseerTelegram "that menu is stale - /menu for a fresh one" }
                 continue
             }
@@ -595,9 +585,52 @@ while ($true) {
             continue
         }
         if ($txt -match '^/menu') {
-            if (@($workers).Count -gt 0) { Send-OverseerTelegram "fleet menu - tap a button below:" }
-            else { Send-OverseerTelegram "no adopted workers - /detect first." }
+            Send-OverseerTelegram "shorthand (case-insensitive): /<worker letter><action> - m message, s status, n next, i interrupt. Examples: /am message Alpha, /bs status Bravo, /cn next Charlie, /di interrupt Delta. Plain commands: /detect /fleet /status /doing <name> /prompt <name> <text> /interrupt <name> <advice>"
             continue
+        }
+
+        # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
+        # case-insensitive (PowerShell -match already is). No AI decode involved.
+        if ($txt -match '^/([a-z])([a-z])$') {
+            $wLetter = $Matches[1].ToLower()
+            $cmdLetter = $Matches[2].ToLower()
+            $wkr = $null
+            foreach ($w in @($workers)) {
+                if ($w.name.Substring(0, 1).ToLower() -eq $wLetter) { $wkr = $w; break }
+            }
+            if (-not $wkr) {
+                Send-OverseerTelegram ("no adopted worker starting with '" + $wLetter + "' - /detect first")
+                continue
+            }
+            if ($cmdLetter -eq "m") {
+                $pendingIntFor = $null
+                $pendingMsgFor = $wkr.id
+                Send-OverseerTelegram ("message mode: " + $wkr.name + " - your next typed message goes straight to it, no /prompt needed. /cancel to abort")
+                continue
+            }
+            elseif ($cmdLetter -eq "s") {
+                try {
+                    $d = Get-WorkerDoing $wkr
+                    $state = if ($d.busy) { "working" } else { "idle" }
+                    $brief = [string]$d.tail
+                    if ($brief.Length -gt 200) { $brief = $brief.Substring(0, 200) + "..." }
+                    Send-OverseerTelegram ($wkr.name + " - " + $state + " - " + $brief)
+                } catch { Send-OverseerTelegram ($wkr.name + " - unreachable") }
+                continue
+            }
+            elseif ($cmdLetter -eq "i") {
+                $pendingMsgFor = $null
+                $pendingIntFor = $wkr.id
+                Send-OverseerTelegram ("interrupt mode: " + $wkr.name + " - your next typed message becomes the interrupt advice. /cancel to abort")
+                continue
+            }
+            elseif ($cmdLetter -eq "n") {
+                $txt = "/prompt " + $wkr.name + " whats next to implement? answer in two or three short lines"
+            }
+            else {
+                Send-OverseerTelegram ("unknown action '" + $cmdLetter + "' - use m (message), s (status), n (next), i (interrupt), e.g. /am")
+                continue
+            }
         }
         # fleet fix v2.7: persistent-keyboard labels arrive as plain text.
         # Handles navigation labels first so they are never swallowed by a
@@ -605,7 +638,7 @@ while ($true) {
         if ($txt -match '^(Back|Hide|Refresh|Status all)$' -or $txt -match '^(Message|Next|Status|Interrupt)\s+(\w+)$' -or @($workers | Where-Object { $_.name -ieq $txt }).Count -gt 0) {
             if ($txt -eq "Back") {
                 $pendingMsgFor = $null; $pendingIntFor = $null
-                if (@($workers).Count -gt 0) { Send-OverseerTelegram "fleet menu - tap a button below:" }
+                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt (e.g. /am, /bs) - /menu for help" }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -658,7 +691,10 @@ while ($true) {
             else {
                 $wkr = @($workers | Where-Object { $_.name -ieq $txt })[0]
                 $pendingMsgFor = $null; $pendingIntFor = $null
-                if ($wkr) { Send-OverseerInlineMenu ($wkr.name + " - pick an action:") (Get-WorkerInlineCommandMenu $wkr.id $wkr.name) }
+                if ($wkr) {
+                    $wl = $wkr.name.Substring(0, 1).ToLower()
+                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt")
+                }
                 continue
             }
         }
