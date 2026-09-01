@@ -100,9 +100,23 @@ if (-not $OverseerOnly) {
 }
 
 if (-not $ConsolesOnly) {
-    $ov = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
-            Where-Object { [string]$_.CommandLine -match 'overseer\.ps1' })
-    if ($ov.Count -gt 0) {
+    # launcher fix v1.1: the old CIM/WMI process query could hang for minutes
+    # on this machine (the recurring WMI fault) and stall the launcher itself.
+    # The overseer heartbeats manager\overseer.lock every poll - a FRESH lock
+    # with a live PID means running. A wedged overseer holds a STALE lock: we
+    # launch a new one and overseer v4.6+ kills the wedge at startup by window
+    # title. Zero WMI on this path now.
+    $ovRunning = $false
+    try {
+        $lockPath = Join-Path $Root "manager\overseer.lock"
+        if (Test-Path $lockPath) {
+            $lock = Get-Content $lockPath -Raw | ConvertFrom-Json
+            $lockAge = (New-TimeSpan -Start ([datetime]::Parse([string]$lock.stamp)) -End (Get-Date)).TotalSeconds
+            $op = Get-Process -Id ([int]$lock.pid) -ErrorAction SilentlyContinue
+            if ($op -and $lockAge -lt 30) { $ovRunning = $true }
+        }
+    } catch {}
+    if ($ovRunning) {
         Write-Host "  overseer already running - leaving it alone" -ForegroundColor DarkGray
     } else {
         $expect = if ($ExpectWorkers -gt 0) { $ExpectWorkers } else { $launched + $skipped }
