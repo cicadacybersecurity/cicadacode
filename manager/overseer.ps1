@@ -7,7 +7,7 @@
     [switch]$AutoDetect,
     [int]$ExpectWorkers = 0,
     [int]$AutoDetectTimeoutSec = 180,
-    [double]$MaxSessionAgeHours = 6
+    [double]$MaxSessionAgeHours = 12   # fleet fix v4.2: 12h window
 )
 # overseer.ps1 - the Telegram manager for the parallel worker fleet.
 # v5: free-form messages are decoded by the cheap model into actions; v4's
@@ -434,16 +434,12 @@ function Get-NewAssistantMessages {
     return @($found)
 }
 function Find-LiveWorkers {
-    # fleet fix v2.3: ONE process map per scan instead of 2 CIM calls per port
-    # (that was the crawl), newest worker session per port, one log line per
-    # stale port. Identity = session: opencode stores sessions per project, so
-    # the same session on two ports is one worker (first port wins).
+    # fleet fix v4.2: detection is now pure TCP+HTTP. The per-scan CIM process
+    # enumeration (an advisory orphan tag) could hang
+    # for minutes on a stressed WMI service and take /detect down with it -
+    # gone. Newest worker session per port, one log line per stale port,
+    # session dedupe, every call timeout-bounded.
     $found = @()
-
-    $procParent = @{}
-    foreach ($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
-        $procParent[[int]$p.ProcessId] = [int]$p.ParentProcessId
-    }
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
         Where-Object {
@@ -456,13 +452,6 @@ function Find-LiveWorkers {
     foreach ($conn in @($ports)) {
         $port = [int]$conn.LocalPort
         $url = "http://127.0.0.1:" + $port
-
-        $orphanNote = ""
-        $ownPid = [int]$conn.OwningProcess
-        if ($procParent.ContainsKey($ownPid)) {
-            $ppid = [int]$procParent[$ownPid]
-            if (-not $procParent.ContainsKey($ppid)) { $orphanNote = " [zombie-server]" }
-        }
 
         try {
             $sessions = Invoke-RestMethod `
@@ -496,7 +485,7 @@ function Find-LiveWorkers {
                 name = ""
                 url = $url
                 session = [string]$sess.id
-                project = ([string]$sess.directory + $orphanNote)
+                project = [string]$sess.directory
             }
         }
         catch {}
@@ -600,7 +589,7 @@ if ($AutoDetect) {
     foreach ($wk in @($workers)) {
         if (-not $wk.session) { continue }
         try {
-            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 8
             $pLast = $null
             foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
             if ($pLast) {
@@ -891,7 +880,7 @@ while ($true) {
             foreach ($wk in @($workers)) {
                 if (-not $wk.session) { continue }
                 try {
-                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 8
                     $pLast = $null
                     foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
                     if ($pLast) {
