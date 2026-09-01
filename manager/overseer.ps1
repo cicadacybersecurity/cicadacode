@@ -144,15 +144,26 @@ function Update-FleetDashboard($fleet) {
     # without /as /bs. At most one update per 10s, and only when something changed.
     if (@($fleet).Count -eq 0) { return }
     if ($script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 10) { return }
+    # fleet fix v3.9: slim lines - "Name - busy 4m" / "Name - idle 26m".
+    # Duration comes from opencode's own message timestamps, so it is real.
     $lines = @()
     foreach ($w in @($fleet)) {
         $d = $null
         try { $d = Get-WorkerDoing $w } catch {}
         if ($d) {
-            $state = if ($d.busy) { "working" } else { "idle" }
-            $brief = [string]$d.tail
-            if ($brief.Length -gt 140) { $brief = $brief.Substring(0, 140) + "..." }
-            if ($brief) { $lines += ($w.name + " - " + $state + " - " + $brief) } else { $lines += ($w.name + " - " + $state) }
+            $state = if ($d.busy) { "busy" } else { "idle" }
+            $for = ""
+            if ($d.sinceMs -and [long]$d.sinceMs -gt 0) {
+                try {
+                    $ms = [long]$d.sinceMs
+                    if ($ms -lt 100000000000) { $ms = $ms * 1000 }
+                    $span = [DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($ms)
+                    if ($span.TotalHours -ge 1) { $for = (" " + [int]$span.TotalHours + "h " + $span.Minutes + "m") }
+                    elseif ($span.TotalMinutes -ge 1) { $for = (" " + [int]$span.TotalMinutes + "m") }
+                    else { $for = (" " + [Math]::Max(0, [int]$span.TotalSeconds) + "s") }
+                } catch {}
+            }
+            $lines += ($w.name + " - " + $state + $for)
         } else {
             $lines += ($w.name + " - unreachable")
         }
@@ -258,6 +269,9 @@ function ConvertFrom-WorkerText([string]$s) {
 }
 function Get-WorkerDoing($wk) {
     # intent fix v2.1: strip think tags from the tail
+    # fleet fix v3.9: also report WHEN the current state began (busy = last user
+    # message created; idle = last assistant turn completed) and run the tail
+    # through the mojibake/think cleaner.
     $msgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
     $lastAny = $null; $lastAssistant = $null
     foreach ($mm in @($msgs)) {
@@ -267,13 +281,22 @@ function Get-WorkerDoing($wk) {
     }
     $busy = ($lastAny -and [string]$lastAny.info.role -eq "user")
     $tail = ""
+    $sinceMs = 0
     if ($lastAssistant) {
         $parts = @($lastAssistant.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
-        $tail = [regex]::Replace(($parts -join " "), "(?s)<think>.*?</think>", "")
+        $tail = ConvertFrom-WorkerText ($parts -join " ")
         $tail = ($tail -replace "\s+", " ").Trim()
         if ($tail.Length -gt 500) { $tail = $tail.Substring(0, 500) + "..." }
     }
-    return @{ busy = $busy; tail = $tail }
+    try {
+        if ($busy -and $lastAny) {
+            $sinceMs = [long]$lastAny.info.time.created
+        } elseif ($lastAssistant) {
+            $sinceMs = [long]$lastAssistant.info.time.completed
+            if (-not $sinceMs) { $sinceMs = [long]$lastAssistant.info.time.created }
+        }
+    } catch {}
+    return @{ busy = $busy; tail = $tail; sinceMs = $sinceMs }
 }
 
 function Invoke-WorkerQuery([string]$url, [string]$session, [string]$question, [string]$who) {
@@ -644,7 +667,7 @@ while ($true) {
                 if ($wkr -and $wkr.session) {
                     try {
                         $d = Get-WorkerDoing $wkr
-                        $state = if ($d.busy) { "working" } else { "idle" }
+                        $state = if ($d.busy) { "busy" } else { "idle" }
                         $brief = [string]$d.tail
                         if ($brief.Length -gt 200) { $brief = $brief.Substring(0, 200) + "..." }
                         Send-OverseerTelegram ($wkr.name + " - " + $state + " - " + $brief)
@@ -718,7 +741,7 @@ while ($true) {
             elseif ($cmdLetter -eq "s") {
                 try {
                     $d = Get-WorkerDoing $wkr
-                    $state = if ($d.busy) { "working" } else { "idle" }
+                    $state = if ($d.busy) { "busy" } else { "idle" }
                     $brief = [string]$d.tail
                     if ($brief.Length -gt 200) { $brief = $brief.Substring(0, 200) + "..." }
                     Send-OverseerTelegram ($wkr.name + " - " + $state + " - " + $brief)
@@ -786,7 +809,7 @@ while ($true) {
                 if ($wkr -and $wkr.session) {
                     try {
                         $d = Get-WorkerDoing $wkr
-                        $state = if ($d.busy) { "working" } else { "idle" }
+                        $state = if ($d.busy) { "busy" } else { "idle" }
                         $brief = [string]$d.tail
                         if ($brief.Length -gt 200) { $brief = $brief.Substring(0, 200) + "..." }
                         Send-OverseerTelegram ($wkr.name + " - " + $state + " - " + $brief)
@@ -911,7 +934,7 @@ while ($true) {
                 if ($d) {
 
                     $state = if ($d.busy) {
-                        "working"
+                        "busy"
                     }
                     else {
                         "idle"
@@ -1443,7 +1466,7 @@ while ($true) {
                             if ($d) {
 
                                 $state = if ($d.busy) {
-                                    "working"
+                                    "busy"
                                 }
                                 else {
                                     "idle"
