@@ -42,3 +42,33 @@ PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
   detect: port 4319 newest session idle 45.6h - stale, skipped (task that worker to wake it, or close the dead console)
 PS>TerminatingError(Invoke-RestMethod): "{"ok":false,"error_code":400,"description":"Bad Request: expected an Array of InlineKeyboardButton"}"
   telegram inline menu failed: The remote server returned an error: (400) Bad Request.
+**********************
+Windows PowerShell transcript start
+Start time: 20260901184647
+Username: cicada\David
+RunAs User: cicada\David
+Configuration Name: 
+Machine: CICADA (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -Command & 'C:\Users\David\minimax-agents\manager\overseer.ps1' -AutoDetect -ExpectWorkers 1 -AutoDetectTimeoutSec 180
+Process ID: 29448
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+overseer live (poll 2s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>
+  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop.
+  detect: port 4311 worker session idle 89.3h - adopted
+  detect: port 4312 worker session idle 89.3h - adopted
+  detect: port 4313 worker session idle 2h - adopted
+PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
+  detect: port 4315 worker session idle 0.2h - adopted
+PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
+>> TerminatingError(Invoke-RestMethod): "The operation has timed out."
+  detect: port 4319 worker session idle 45.8h - adopted
+PS>TerminatingError(Invoke-RestMethod): "{"ok":false,"error_code":400,"description":"Bad Request: expected an Array of InlineKeyboardButton"}"
+  telegram inline menu failed: The remote server returned an error: (400) Bad Request. / {"ok":false,"error_code":400,"description":"Bad Request: expected an Array of InlineKeyboardButton"}

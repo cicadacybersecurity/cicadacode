@@ -164,11 +164,28 @@ function Remove-OverseerPinnedMenu {
     } catch {}
 }
 function Send-OverseerInlineMenu([string]$text, $rows) {
-    # fleet fix v3.3: one-off inline keyboard message (worker action menus)
-    $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ inline_keyboard = @($rows) } } | ConvertTo-Json -Depth 10
+    # fleet fix v4.5: PS 5.1's ConvertTo-Json collapses single-element nested
+    # arrays (a one-button row), which Telegram rejects with 400 "expected an
+    # Array of InlineKeyboardButton" - silently eating the roster + button.
+    # Build the keyboard JSON by hand so the structure can never collapse, and
+    # fall back to a plain message so bad markup can never lose the text.
+    $rowsJson = @()
+    foreach ($row in @($rows)) {
+        $btns = @()
+        foreach ($b in @($row)) {
+            $btns += ('{"text":' + ([string]$b.text | ConvertTo-Json) + ',"callback_data":' + ([string]$b.callback_data | ConvertTo-Json) + '}')
+        }
+        $rowsJson += ("[" + ($btns -join ",") + "]")
+    }
+    $cid = [string]$chatId
+    if ($cid -match '^-?\d+$') { $cidJson = $cid } else { $cidJson = ($cid | ConvertTo-Json) }
+    $body = '{"chat_id":' + $cidJson + ',"text":' + ([string]$text | ConvertTo-Json) + ',"reply_markup":{"inline_keyboard":[' + ($rowsJson -join ",") + ']}}'
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
-    } catch { Write-Host ("  telegram inline menu failed: " + $_.Exception.Message + " / " + [string]$_.ErrorDetails.Message) -ForegroundColor DarkYellow }
+    } catch {
+        Write-Host ("  telegram inline menu failed: " + $_.Exception.Message + " / " + [string]$_.ErrorDetails.Message) -ForegroundColor DarkYellow
+        Send-OverseerTelegram $text   # fleet fix v4.5: never lose the message to bad markup
+    }
 }
 function Get-WorkerInlineMenu($fleet) {
     # fleet fix v3.3: the floating bar - worker row (up to 4 wide) + utilities
