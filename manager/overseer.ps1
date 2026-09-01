@@ -87,9 +87,16 @@ function Get-WorkerCommandMenu([string]$id, [string]$name) {
     return $rows
 }
 function Send-OverseerKeyboardRemove([string]$text) {
-    # fleet fix v2.7: peel the pinned keyboard off
+    # fleet fix v3.6: Telegram requires a message to clear a client keyboard -
+    # so the removal message deletes itself instantly; zero visible chatter
     $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ remove_keyboard = $true } } | ConvertTo-Json -Depth 6
-    try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30) } catch {}
+    try {
+        $r = Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30
+        if ($r -and $r.result -and $r.result.message_id) {
+            $dBody = @{ chat_id = $chatId; message_id = $r.result.message_id } | ConvertTo-Json
+            try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/deleteMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($dBody)) -TimeoutSec 15) } catch {}
+        }
+    } catch {}
 }
 function Remove-OverseerPinnedMenu {
     # fleet fix v3.1: the pinned top menu is retired (operator prefers the
@@ -140,6 +147,8 @@ function Get-OverseerUpdates([long]$offset) {
 }
 function Invoke-OverseerSummary([string]$workerText, [string]$who) {
     $sys = "You rewrite a worker agent's latest reply for the operator's Telegram chat. Plain English, short labeled lines, no jargon, no markdown, no filler. The worker follows a plan broken into phases; its reply says what it did and what comes next. Output EXACTLY these lines, in this order, nothing else: CHANGED: one or two plain sentences - what the worker actually did, built, or fixed this round; name real files, commands, or results when the reply mentions them. NEXT: what is left to do - the next phase or remaining plan items; if the worker is blocked or waiting for direction, say what it is waiting for; if the plan is finished, say plan complete. NEEDS YOU: include this line ONLY when the worker is blocked, errored, or needs a decision - one plain sentence on exactly what is needed from the operator. SUGGESTION: the single most useful short message the operator could send back verbatim, e.g. implement phase 14, or run the tests, or fix the failing validation; write exactly none needed if there is nothing useful to send. Never invent facts, progress, or blockers. If the reply is only a question or acknowledgement, CHANGED says so, NEXT says what you can tell, SUGGESTION answers it or says none needed.";
+    # fleet fix v3.6: hard cap - huge replies were failing the summary call
+    if ($workerText.Length -gt 12000) { $workerText = $workerText.Substring(0, 12000) + "`n[...trimmed]" }
     $body = @{ model = ($Model -replace "^minimax/", ""); messages = @(@{ role = "system"; content = $sys }, @{ role = "user"; content = $workerText }); temperature = 0.2; max_tokens = 400 } | ConvertTo-Json -Depth 10
     try {
         $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120
@@ -173,6 +182,15 @@ function Invoke-WorkerInterrupt([string]$url, [string]$session, [string]$advice)
     Start-Sleep -Seconds 3
     $wrapped = "INTERRUPT FROM THE OPERATOR (this is not a new task - retain exactly where you were and what you had done): " + $advice + " Take this on board, briefly confirm what you will change, then continue your work with it applied."
     Send-WorkerText $url $session $wrapped
+}
+function ConvertFrom-WorkerText([string]$s) {
+    # fleet fix v3.6: strip <think> blocks (they flood relays and choke the
+    # summary API) and repair PS 5.1 Latin-1 mojibake (â€ style) from UTF-8 APIs
+    $s = [regex]::Replace($s, "(?s)<think>.*?</think>", "").Trim()
+    if ($s -match 'â€|Ã.') {
+        try { $s = [System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::GetEncoding('ISO-8859-1').GetBytes($s)) } catch {}
+    }
+    return $s
 }
 function Get-WorkerDoing($wk) {
     # intent fix v2.1: strip think tags from the tail
@@ -454,7 +472,7 @@ function Get-FleetRoster($fleet) {
 try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
 Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
-Send-OverseerTelegram "overseer online - /detect adopts the fleet; shorthand /<letter><action> (e.g. /am /bs /cn /di); /status /doing <name> /interrupt <name> <advice> work too."
+Send-OverseerTelegram "overseer online. Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet."
 Remove-OverseerPinnedMenu   # fleet fix v3.1: clear any stale pinned menu
 Send-OverseerKeyboardRemove "keyboards off - shorthand: /am message Alpha, /bs status, /cn next, /di interrupt (/menu for help)"   # fleet fix v3.4
 
@@ -483,7 +501,7 @@ if ($AutoDetect) {
             foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
             if ($pLast) {
                 $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
-                $pText = ($pParts -join "`n").Trim()
+                $pText = ConvertFrom-WorkerText ($pParts -join "`n")
                 if ($pText) {
                     $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
                     $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
@@ -757,7 +775,7 @@ while ($true) {
                     foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
                     if ($pLast) {
                         $pParts = @($pLast.parts | ForEach-Object { [string]$_.text } | Where-Object { $_ })
-                        $pText = ($pParts -join "`n").Trim()
+                        $pText = ConvertFrom-WorkerText ($pParts -join "`n")
                         if ($pText) {
                             $pHashInput = $pText.Length.ToString() + ":" + $pText.Substring(0, [Math]::Min(64, $pText.Length))
                             $lastHash[$wk.id] = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pHashInput))
@@ -1445,7 +1463,7 @@ while ($true) {
             )
 
             $text =
-                ($parts -join "`n").Trim()
+                ConvertFrom-WorkerText ($parts -join "`n")
 
             if (-not $text) {
                 continue
