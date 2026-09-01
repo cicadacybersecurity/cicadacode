@@ -41,7 +41,25 @@ function Write-OverseerLock {
     try { (@{ pid = $PID; stamp = (Get-Date).ToString("o") } | ConvertTo-Json) | Set-Content $script:lockFile -Encoding UTF8 } catch {}
 }
 Write-OverseerLock
-$callsigns = @("Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet")
+
+# fleet fix v4.4: sweep for pre-lock overseer processes (built before the lock
+# existed - a wedged twin races the live overseer for every Telegram update,
+# which is why commands show read receipts yet never get replies). CIM runs in
+# a 10-second job so a hung WMI service cannot stall startup.
+try {
+    $pjob = Start-Job { Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" | Select-Object ProcessId, CommandLine }
+    if (Wait-Job $pjob -Timeout 10) {
+        foreach ($pr in @(Receive-Job $pjob)) {
+            if ($pr.ProcessId -ne $PID -and [string]$pr.CommandLine -match 'overseer\.ps1') {
+                Write-Host ("killing stale overseer process PID " + $pr.ProcessId) -ForegroundColor Yellow
+                Stop-Process -Id $pr.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } else {
+        Write-Host "process scan timed out (WMI slow) - skipped" -ForegroundColor DarkYellow
+    }
+    Remove-Job $pjob -Force -ErrorAction SilentlyContinue
+} catch {}$callsigns = @("Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet")
 function Get-Callsign([string]$id) {
     $n = 0
     if ([int]::TryParse($id, [ref]$n) -and $n -ge 1 -and $n -le $callsigns.Count) { return $callsigns[$n - 1] }
@@ -150,7 +168,7 @@ function Send-OverseerInlineMenu([string]$text, $rows) {
     $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ inline_keyboard = @($rows) } } | ConvertTo-Json -Depth 10
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
-    } catch { Write-Host ("  telegram inline menu failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
+    } catch { Write-Host ("  telegram inline menu failed: " + $_.Exception.Message + " / " + [string]$_.ErrorDetails.Message) -ForegroundColor DarkYellow }
 }
 function Get-WorkerInlineMenu($fleet) {
     # fleet fix v3.3: the floating bar - worker row (up to 4 wide) + utilities
@@ -504,16 +522,15 @@ function Find-LiveWorkers {
             if ($newest.Count -eq 0) { continue }
             $sess = $newest[0]
 
+            # fleet fix v4.4: a live serve IS a live worker - never skip on
+            # session age. Idle time is logged for information only.
             $ageHours = 999
             try {
                 $updMs = [long]$sess.time.updated
                 if ($updMs -lt 100000000000) { $updMs = $updMs * 1000 }
                 $ageHours = ([DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($updMs)).TotalHours
             } catch {}
-            if ($ageHours -gt $MaxSessionAgeHours) {
-                Write-Host ("  detect: port " + $port + " newest session idle " + [math]::Round($ageHours, 1) + "h - stale, skipped (task that worker to wake it, or close the dead console)") -ForegroundColor DarkGray
-                continue
-            }
+            Write-Host ("  detect: port " + $port + " worker session idle " + [math]::Round($ageHours, 1) + "h - adopted") -ForegroundColor DarkGray
 
             $found += @{
                 id = "pending"
