@@ -150,14 +150,27 @@ function Invoke-OverseerSummary([string]$workerText, [string]$who) {
     # fleet fix v3.6: hard cap - huge replies were failing the summary call
     if ($workerText.Length -gt 12000) { $workerText = $workerText.Substring(0, 12000) + "`n[...trimmed]" }
     $body = @{ model = ($Model -replace "^minimax/", ""); messages = @(@{ role = "system"; content = $sys }, @{ role = "user"; content = $workerText }); temperature = 0.2; max_tokens = 400 } | ConvertTo-Json -Depth 10
+    $script:LastSummaryError = ""
     try {
         $resp = Invoke-RestMethod -Method Post -Uri "https://api.minimax.io/v1/chat/completions" -Headers @{ Authorization = ("Bearer " + $env:MINIMAX_API_KEY); "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120
+        # fleet fix v3.7: MiniMax can answer HTTP 200 with an error envelope -
+        # read base_resp so the real reason is never invisible
+        if ($resp.base_resp -and [int]$resp.base_resp.status_code -ne 0) {
+            $script:LastSummaryError = ("api code " + $resp.base_resp.status_code + " " + [string]$resp.base_resp.status_msg)
+            Write-Host ("  summary rejected: " + $script:LastSummaryError) -ForegroundColor DarkYellow
+            return $null
+        }
         $t = [string]$resp.choices[0].message.content
         $t = [regex]::Replace($t, "(?s)<think>.*?</think>", "").Trim()
+        if (-not $t) { $script:LastSummaryError = "empty answer from api" }
         if ($resp.usage) { Write-Host ("  (summary: " + $resp.usage.prompt_tokens + " in / " + $resp.usage.completion_tokens + " out)") -ForegroundColor DarkGray }
         return $t
     } catch {
-        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { Write-Host ("  API error body: " + $_.ErrorDetails.Message) -ForegroundColor DarkYellow }
+        $em = [string]$_.Exception.Message
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $em = [string]$_.ErrorDetails.Message }
+        if ($em.Length -gt 100) { $em = $em.Substring(0, 100) + "..." }
+        $script:LastSummaryError = $em
+        Write-Host ("  API error body: " + $em) -ForegroundColor DarkYellow
         return $null
     }
 }
@@ -1510,11 +1523,14 @@ while ($true) {
             # fails, relay the raw text (truncated); mark seen only when there
             # is something to send.
             if (-not $sum) {
+                # fleet fix v3.7: the tag now carries the actual failure reason
+                $why = [string]$script:LastSummaryError
+                if (-not $why) { $why = "no detail" }
                 $sum = $text
                 if ($sum.Length -gt 900) {
-                    $sum = $sum.Substring(0, 900) + "`n...[truncated; summary API failed]"
+                    $sum = $sum.Substring(0, 900) + "`n...[truncated; summary: " + $why + "]"
                 } else {
-                    $sum = $sum + "`n[raw relay - summary API failed]"
+                    $sum = $sum + "`n[raw relay - summary: " + $why + "]"
                 }
             }
 
