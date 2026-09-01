@@ -131,3 +131,445 @@ PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
 >> TerminatingError(Invoke-RestMethod): "The operation has timed out."
   detect: port 4319 worker session idle 47h - adopted
   [20:00:44] telegram: inline menu sent (1 button row(s))
+**********************
+Windows PowerShell transcript start
+Start time: 20260901203449
+Username: cicada\David
+RunAs User: cicada\David
+Configuration Name: 
+Machine: CICADA (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -Command & 'C:\Users\David\minimax-agents\manager\overseer.ps1' -AutoDetect -ExpectWorkers 1 -AutoDetectTimeoutSec 180
+Process ID: 4992
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260901204403
+Username: cicada\David
+RunAs User: cicada\David
+Configuration Name: 
+Machine: CICADA (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -Command & 'C:\Users\David\minimax-agents\manager\overseer.ps1' -AutoDetect -ExpectWorkers 2 -AutoDetectTimeoutSec 180
+Process ID: 45332
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+overseer v4.7 live (poll 2s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>
+  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop.
+  [20:44:04] telegram: sent 213 chars
+  detect: port 4311 worker session idle 91.3h - adopted
+  detect: port 4312 worker session idle 91.3h - adopted
+  detect: port 4313 worker session idle 3.9h - adopted
+PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
+  detect: port 4315 worker session idle 0h - adopted
+PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
+>> TerminatingError(Invoke-RestMethod): "The operation has timed out."
+  detect: port 4319 worker session idle 47.8h - adopted
+  [20:44:12] telegram: inline menu sent (1 button row(s))
+  [20:44:15] telegram: sent 457 chars
+  [20:44:21] telegram: sent 457 chars
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Charlie poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  detect: port 4311 worker session idle 91.3h - adopted
+  detect: port 4312 worker session idle 91.3h - adopted
+PS>TerminatingError(Invoke-RestMethod): "The operation has timed out."
+>> TerminatingError(Invoke-RestMethod): "The operation has timed out."
+>> TerminatingError(Invoke-RestMethod): "The operation has timed out."
+  detect: port 4319 worker session idle 47.8h - adopted
+  [20:45:44] telegram: inline menu sent (1 button row(s))
+  killed Alpha serve process opencode (PID 36344, port 4311)
+  [20:45:56] telegram: sent 140 chars
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  killed Bravo serve process opencode (PID 23308, port 4319)
+  [20:46:05] telegram: sent 140 chars
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Alpha poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+  Bravo poll failed: Unable to connect to the remote server
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+>> TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"
+PS>TerminatingError(Invoke-RestMethod): "Unable to connect to the remote server"

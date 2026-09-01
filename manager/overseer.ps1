@@ -16,6 +16,8 @@
 # stale-heartbeat twin kill, guarded inline-menu JSON, send receipts in the
 # console, comma-pinned suggestion buttons, first-sight baselining, tighter
 # poll timeouts, broader listener detection.
+# v4.7: Fleet status button replies visibly; /ak (or /kill Alpha, /killall)
+# kills an agent's serve process by port ownership - no WMI.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "engine.ps1")
 Import-CicadaSecrets
@@ -376,6 +378,38 @@ function Invoke-WorkerInterrupt([string]$url, [string]$session, [string]$advice)
     $wrapped = "INTERRUPT FROM THE OPERATOR (this is not a new task - retain exactly where you were and what you had done): " + $advice + " Take this on board, briefly confirm what you will change, then continue your work with it applied."
     Send-WorkerText $url $session $wrapped
 }
+function Get-WorkerPort($wk) {
+    # fleet fix v4.7: the port is the worker's identity - parse it off its url.
+    if ([string]$wk.url -match ':(\d+)\s*$') { return [int]$Matches[1] }
+    return 0
+}
+function Stop-WorkerProcess($wk) {
+    # fleet fix v4.7: the overseer can kill an agent. The agent IS the process
+    # listening on the worker's port - found via Get-NetTCPConnection, the one
+    # network API already proven reliable on this machine (Find-LiveWorkers uses
+    # it). No Win32_Process / WMI. Refuses to kill this overseer or system PIDs,
+    # and names exactly what it killed.
+    $port = Get-WorkerPort $wk
+    if (-not $port) { return ($wk.name + ": no port known - cannot kill") }
+    $kpid = 0
+    try {
+        $kpid = [int](@(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess)[0])
+    } catch {}
+    if (-not $kpid -or $kpid -le 4) {
+        return ($wk.name + ": nothing is listening on port " + $port + " - that agent already looks dead. /detect to rescan")
+    }
+    if ($kpid -eq $PID) { return ($wk.name + ": REFUSED - port " + $port + " belongs to this overseer process itself") }
+    $pname = ""
+    try { $pname = [string](Get-Process -Id $kpid -ErrorAction Stop).ProcessName }
+    catch { return ($wk.name + ": listener PID " + $kpid + " on port " + $port + " vanished before the kill") }
+    try {
+        Stop-Process -Id $kpid -Force -ErrorAction Stop
+        Write-Host ("  killed " + $wk.name + " serve process " + $pname + " (PID " + $kpid + ", port " + $port + ")") -ForegroundColor Yellow
+        return ("killed " + $wk.name + "'s agent: " + $pname + " (PID " + $kpid + ", port " + $port + "). Its console window may stay open, but the agent is dead - /detect to rescan the fleet")
+    } catch {
+        return ($wk.name + ": kill failed for " + $pname + " (PID " + $kpid + "): " + $_.Exception.Message)
+    }
+}
 function ConvertFrom-WorkerText([string]$s) {
     # fleet fix v3.6: strip <think> blocks (they flood relays and choke the
     # summary API) and repair PS 5.1 Latin-1 mojibake (â€ style) from UTF-8 APIs
@@ -663,9 +697,9 @@ function Get-FleetRoster($fleet) {
     )
 }
 try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
-Write-Host ("overseer v4.6 live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
+Write-Host ("overseer v4.7 live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
-Send-OverseerTelegram ("overseer v4.6 online (PID " + $PID + "). Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet.")
+Send-OverseerTelegram ("overseer v4.7 online (PID " + $PID + "). Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt, /ak kill Alpha (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet.")
 Remove-OverseerPinnedMenu   # fleet fix v3.1: clear any stale pinned menu
 Send-OverseerKeyboardRemove "keyboards off - shorthand: /am message Alpha, /bs status, /cn next, /di interrupt (/menu for help)"   # fleet fix v3.4
 
@@ -749,7 +783,7 @@ while ($true) {
             $cbData = [string]$cb.data
             Send-OverseerAnswerCallback ([string]$cb.id)
             if ($cbData -eq "menu:main") {
-                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt (e.g. /am, /bs) - /menu for help" }
+                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt, k kill (e.g. /am, /bs, /ak) - /menu for help" }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -759,7 +793,7 @@ while ($true) {
                 $wkr = Resolve-WorkerTarget $Matches[1] $workers
                 if ($wkr) {
                     $wl = $wkr.name.Substring(0, 1).ToLower()
-                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt")
+                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt, /" + $wl + "k kill")
                 }
                 else { Send-OverseerTelegram "that menu is stale - /menu for a fresh one" }
                 continue
@@ -813,8 +847,12 @@ while ($true) {
             }
             elseif ($cbData -match '^sugn:(\d+)$') { continue }
             elseif ($cbData -eq "menu:dash") {
+                # fleet fix v4.7: the button must SHOW something. It used to only
+                # edit the pinned board (a silent no-op when the text was unchanged)
+                # and answered with no toast - a click looked dead. Now it refreshes
+                # the board AND replies with the live status in the chat.
                 Update-FleetDashboard $workers -Force
-                continue
+                $txt = "/status"
             }
             else { continue }
         }
@@ -831,14 +869,14 @@ while ($true) {
             continue
         }
         if ($txt -match '^/menu') {
-            Send-OverseerTelegram "shorthand (case-insensitive): /<worker letter><action> - m message, s status, n next, i interrupt. Examples: /am message Alpha, /bs status Bravo, /cn next Charlie, /di interrupt Delta. Plain commands: /detect /fleet /status /doing <name> /prompt <name> <text> /interrupt <name> <advice>"
+            Send-OverseerTelegram "shorthand (case-insensitive): /<worker letter><action> - m message, s status, n next, i interrupt, k kill the agent process. Examples: /am message Alpha, /bs status Bravo, /cn next Charlie, /di interrupt Delta, /ak kill Alpha. Plain commands: /detect /fleet /status /doing <name> /prompt <name> <text> /interrupt <name> <advice> /kill <name> /killall"
             continue
         }
 
         # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
         # case-insensitive (PowerShell -match already is). No AI decode involved.
         if ($txt -match '^/ping') {
-            Send-OverseerTelegram ("pong - overseer v4.6 alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
+            Send-OverseerTelegram ("pong - overseer v4.7 alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
             continue
         }
         if ($txt -match '^/([a-z])([a-z])(?:\s+(.+))?$') {   # v3.5: optional inline text, e.g. /am run the tests
@@ -891,8 +929,12 @@ while ($true) {
                 if (-not $extra) { $extra = "whats next to implement? answer in two or three short lines" }
                 $txt = "/prompt " + $wkr.name + " " + $extra
             }
+            elseif ($cmdLetter -eq "k") {
+                Send-OverseerTelegram (Stop-WorkerProcess $wkr)   # fleet fix v4.7: /ak kills Alpha's agent process
+                continue
+            }
             else {
-                Send-OverseerTelegram ("unknown action '" + $cmdLetter + "' - use m (message), s (status), n (next), i (interrupt), e.g. /am")
+                Send-OverseerTelegram ("unknown action '" + $cmdLetter + "' - use m (message), s (status), n (next), i (interrupt), k (kill), e.g. /am")
                 continue
             }
         }
@@ -902,7 +944,7 @@ while ($true) {
         if ($txt -match '^(Back|Hide|Refresh|Status all)$' -or $txt -match '^(Message|Next|Status|Interrupt)\s+(\w+)$' -or @($workers | Where-Object { $_.name -ieq $txt }).Count -gt 0) {
             if ($txt -eq "Back") {
                 $pendingMsgFor = $null; $pendingIntFor = $null
-                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt (e.g. /am, /bs) - /menu for help" }
+                if (@($workers).Count -gt 0) { Send-OverseerTelegram "shorthand: /<letter><action> - m message, s status, n next, i interrupt, k kill (e.g. /am, /bs, /ak) - /menu for help" }
                 else { Send-OverseerTelegram "no adopted workers - /detect first." }
                 continue
             }
@@ -957,7 +999,7 @@ while ($true) {
                 $pendingMsgFor = $null; $pendingIntFor = $null
                 if ($wkr) {
                     $wl = $wkr.name.Substring(0, 1).ToLower()
-                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt")
+                    Send-OverseerTelegram ($wkr.name + " shorthand: /" + $wl + "m message, /" + $wl + "s status, /" + $wl + "n next, /" + $wl + "i interrupt, /" + $wl + "k kill")
                 }
                 continue
             }
@@ -1190,6 +1232,29 @@ while ($true) {
                 )
             }
 
+            continue
+        }
+
+        # ----------------------------------------------------
+        # /kill <worker>  and  /killall   (fleet fix v4.7: kill agent processes)
+        # ----------------------------------------------------
+        if ($txt -match '(?i)^/killall\s*$') {
+            if (-not $workers -or $workers.Count -eq 0) {
+                Send-OverseerTelegram "no adopted workers - /detect first."
+                continue
+            }
+            $killLines = @()
+            foreach ($wk3 in @($workers)) { $killLines += (Stop-WorkerProcess $wk3) }
+            Send-OverseerTelegram ($killLines -join "`n")
+            continue
+        }
+        if ($txt -match '(?i)^/kill\s+(\w+)\s*$') {
+            $wk2 = Resolve-WorkerTarget $Matches[1] $workers
+            if (-not $wk2) {
+                Send-OverseerTelegram ("no adopted worker '" + $Matches[1] + "' - /detect to scan")
+                continue
+            }
+            Send-OverseerTelegram (Stop-WorkerProcess $wk2)
             continue
         }
 
