@@ -12,6 +12,10 @@
 # overseer.ps1 - the Telegram manager for the parallel worker fleet.
 # v5: free-form messages are decoded by the cheap model into actions; v4's
 # detection, callsigns, summary relay, and yes/custom routing.
+# v4.6: update-backlog drop at startup, WMI-free twin sweep (window title),
+# stale-heartbeat twin kill, guarded inline-menu JSON, send receipts in the
+# console, comma-pinned suggestion buttons, first-sight baselining, tighter
+# poll timeouts, broader listener detection.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "engine.ps1")
 Import-CicadaSecrets
@@ -30,7 +34,11 @@ try {
         $oldPid = [int]$lock.pid
         $lockAge = (New-TimeSpan -Start ([datetime]::Parse([string]$lock.stamp)) -End (Get-Date)).TotalSeconds
         $oldAlive = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
-        if ($oldAlive -and $oldAlive.ProcessName -match '^(powershell|pwsh)$' -and $oldAlive.Id -ne $PID -and $lockAge -lt 60) {
+        # fleet fix v4.6: a twin with a STALE heartbeat is wedged, not dead -
+        # if its console title still says overseer it can wake and eat updates
+        # at any moment, so kill it too.
+        $twinByTitle = ($oldAlive -and [string]$oldAlive.MainWindowTitle -match 'CICADA overseer')
+        if ($oldAlive -and $oldAlive.ProcessName -match '^(powershell|pwsh)$' -and $oldAlive.Id -ne $PID -and ($lockAge -lt 60 -or $twinByTitle)) {
             Write-Host ("another overseer instance (PID " + $oldPid + ", heartbeat " + [int]$lockAge + "s ago) is live - stopping it") -ForegroundColor Yellow
             Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 2
@@ -59,7 +67,23 @@ try {
         Write-Host "process scan timed out (WMI slow) - skipped" -ForegroundColor DarkYellow
     }
     Remove-Job $pjob -Force -ErrorAction SilentlyContinue
-} catch {}$callsigns = @("Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet")
+} catch {}
+
+# fleet fix v4.6: WMI-free twin sweep. When WMI hangs (the recurring fault
+# on this machine) the v4.4 CIM sweep above times out and is SKIPPED - and
+# the pre-lock twin survives to keep racing this process for every Telegram
+# update (the checkmark-but-silent pattern). Window titles need no WMI: any
+# powershell console titled "CICADA overseer" that is not THIS process is a
+# twin - kill on sight.
+try {
+    foreach ($tp in @(Get-Process powershell, pwsh -ErrorAction SilentlyContinue)) {
+        if ($tp.Id -ne $PID -and [string]$tp.MainWindowTitle -match 'CICADA overseer') {
+            Write-Host ("killing twin overseer console PID " + $tp.Id + " (window-title match, no WMI)") -ForegroundColor Yellow
+            Stop-Process -Id $tp.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+} catch {}
+$callsigns = @("Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet")
 function Get-Callsign([string]$id) {
     $n = 0
     if ([int]::TryParse($id, [ref]$n) -and $n -ge 1 -and $n -le $callsigns.Count) { return $callsigns[$n - 1] }
@@ -82,6 +106,7 @@ function Send-OverseerTelegram([string]$text) {
     $body = @{ chat_id = $chatId; text = $text } | ConvertTo-Json
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
+        Write-Host ("  [" + (Get-Date -Format HH:mm:ss) + "] telegram: sent " + $text.Length + " chars") -ForegroundColor DarkGray   # fleet fix v4.6: proof of send - silence in Telegram now PROVES a twin ate it
     } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
 }
 
@@ -173,17 +198,28 @@ function Send-OverseerInlineMenu([string]$text, $rows) {
     foreach ($row in @($rows)) {
         $btns = @()
         foreach ($b in @($row)) {
-            $btns += ('{"text":' + ([string]$b.text | ConvertTo-Json) + ',"callback_data":' + ([string]$b.callback_data | ConvertTo-Json) + '}')
+            # fleet fix v4.6: skip null/empty buttons - Telegram rejects empty
+            # text or callback_data with the same 400 that ate the roster.
+            if (-not $b) { continue }
+            $bt = [string]$b.text
+            $bd = [string]$b.callback_data
+            if (-not $bt -or -not $bd) { continue }
+            $btns += ('{"text":' + ($bt | ConvertTo-Json) + ',"callback_data":' + ($bd | ConvertTo-Json) + '}')
         }
-        $rowsJson += ("[" + ($btns -join ",") + "]")
+        # fleet fix v4.6: never emit an empty row - Telegram 400s on [].
+        if ($btns.Count -gt 0) { $rowsJson += ("[" + ($btns -join ",") + "]") }
     }
+    # fleet fix v4.6: if every button was invalid, the text still goes out plain.
+    if ($rowsJson.Count -eq 0) { Send-OverseerTelegram $text; return }
     $cid = [string]$chatId
     if ($cid -match '^-?\d+$') { $cidJson = $cid } else { $cidJson = ($cid | ConvertTo-Json) }
     $body = '{"chat_id":' + $cidJson + ',"text":' + ([string]$text | ConvertTo-Json) + ',"reply_markup":{"inline_keyboard":[' + ($rowsJson -join ",") + ']}}'
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
+        Write-Host ("  [" + (Get-Date -Format HH:mm:ss) + "] telegram: inline menu sent (" + $rowsJson.Count + " button row(s))") -ForegroundColor DarkGray   # fleet fix v4.6: proof of send
     } catch {
         Write-Host ("  telegram inline menu failed: " + $_.Exception.Message + " / " + [string]$_.ErrorDetails.Message) -ForegroundColor DarkYellow
+        Write-Host ("  rejected body was: " + $body) -ForegroundColor DarkGray   # fleet fix v4.6: the exact payload lands in overseer.log
         Send-OverseerTelegram $text   # fleet fix v4.5: never lose the message to bad markup
     }
 }
@@ -221,7 +257,7 @@ function Update-FleetDashboard($fleet, [switch]$Force) {
         $lines = @()
         foreach ($w in @($fleet)) {
             $d = $null
-            try { $d = Get-WorkerDoing $w } catch {}
+            try { $d = Get-WorkerDoing $w -TimeoutSec 6 } catch {}   # fleet fix v4.6: a hung worker must not stall the board
             if ($d) {
                 $state = if ($d.busy) { "busy" } else { "idle" }
                 $for = ""
@@ -349,12 +385,12 @@ function ConvertFrom-WorkerText([string]$s) {
     }
     return $s
 }
-function Get-WorkerDoing($wk) {
+function Get-WorkerDoing($wk, [int]$TimeoutSec = 15) {   # fleet fix v4.6: dashboard polls cheap so a hung worker cannot stall the board
     # intent fix v2.1: strip think tags from the tail
     # fleet fix v3.9: also report WHEN the current state began (busy = last user
     # message created; idle = last assistant turn completed) and run the tail
     # through the mojibake/think cleaner.
-    $msgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 15
+    $msgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec $TimeoutSec
     $lastAny = $null; $lastAssistant = $null
     foreach ($mm in @($msgs)) {
         $role = [string]$mm.info.role
@@ -513,7 +549,7 @@ function Find-LiveWorkers {
 
     $ports = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.LocalAddress -eq "127.0.0.1" -and
+            ($_.LocalAddress -eq "127.0.0.1" -or $_.LocalAddress -eq "::1" -or $_.LocalAddress -eq "0.0.0.0") -and   # fleet fix v4.6: catch workers bound to any/ipv6 loopback too
             $_.LocalPort -ge 4311 -and
             $_.LocalPort -le 4320
         } |
@@ -627,9 +663,9 @@ function Get-FleetRoster($fleet) {
     )
 }
 try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
-Write-Host ("overseer live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
+Write-Host ("overseer v4.6 live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
-Send-OverseerTelegram "overseer online. Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet."
+Send-OverseerTelegram ("overseer v4.6 online (PID " + $PID + "). Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet.")
 Remove-OverseerPinnedMenu   # fleet fix v3.1: clear any stale pinned menu
 Send-OverseerKeyboardRemove "keyboards off - shorthand: /am message Alpha, /bs status, /cn next, /di interrupt (/menu for help)"   # fleet fix v3.4
 
@@ -645,6 +681,19 @@ $dashMsgId = $null          # v3.8: pinned dashboard message id
 $dashLastText = ""          # v3.8: last dashboard text (change detection)
 $dashLastUpdate = $null     # v3.8: dashboard throttle clock
 $tgOffset = 0
+
+# fleet fix v4.6: NEVER replay the update backlog. Telegram keeps unconfirmed
+# updates for 24h; starting at offset 0 re-executed up to 100 old commands
+# on every restart - including stale steers/interrupts being SENT TO WORKERS
+# again. offset -1 confirms everything pending; we listen from right now.
+try {
+    $blResp = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getUpdates?timeout=0&offset=-1") -TimeoutSec 15
+    $backlog = @($blResp.result)
+    if ($backlog.Count -gt 0) {
+        $tgOffset = [long]$backlog[$backlog.Count - 1].update_id + 1
+        Write-Host ("startup: dropped " + $backlog.Count + " stale telegram update(s) - listening from now") -ForegroundColor DarkGray
+    }
+} catch {}
 $workers = @()
 
 # fleet: optional startup auto-detect - wait for consoles to boot, adopt every
@@ -789,7 +838,7 @@ while ($true) {
         # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
         # case-insensitive (PowerShell -match already is). No AI decode involved.
         if ($txt -match '^/ping') {
-            Send-OverseerTelegram ("pong - overseer alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
+            Send-OverseerTelegram ("pong - overseer v4.6 alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
             continue
         }
         if ($txt -match '^/([a-z])([a-z])(?:\s+(.+))?$') {   # v3.5: optional inline text, e.g. /am run the tests
@@ -1618,7 +1667,7 @@ while ($true) {
                         $wk.session +
                         "/message"
                     ) `
-                    -TimeoutSec 15
+                    -TimeoutSec 8   # fleet fix v4.6: hung workers must not stall the poll loop
 
             $last = $null
 
@@ -1691,6 +1740,11 @@ while ($true) {
                 if ([int]$stablePolls[$wk.id] -lt 6) { continue }
             }
 
+            # fleet fix v4.6: first sight BASELINES, never relays. If adoption
+            # priming failed (hung worker), the old code relayed the worker's
+            # entire last turn as if it were brand new.
+            if (-not $lastHash.ContainsKey($wk.id)) { $lastHash[$wk.id] = $h; continue }
+
             if ($lastHash[$wk.id] -eq $h) {
                 continue
             }
@@ -1755,7 +1809,8 @@ while ($true) {
                 $sum
             # fleet fix v3.8: one-tap suggestion buttons on the relay
             if ($sug -and $sug -notmatch '^none') {
-                $sugRows = @(@(@{ text = "Send suggestion"; callback_data = ("sugs:" + $wk.id) }, @{ text = "Skip"; callback_data = ("sugn:" + $wk.id) }))
+                # fleet fix v4.6: comma-pins the row - @(@(a,b)) flattens one pipeline level, arriving as two 1-button rows
+                $sugRows = ,@(@{ text = "Send suggestion"; callback_data = ("sugs:" + $wk.id) }, @{ text = "Skip"; callback_data = ("sugn:" + $wk.id) })
                 Send-OverseerInlineMenu $relay $sugRows
             } else {
                 Send-OverseerTelegram $relay
