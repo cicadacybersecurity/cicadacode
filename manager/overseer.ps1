@@ -139,6 +139,57 @@ function Get-WorkerInlineCommandMenu([string]$id, [string]$name) {
     [void]$rows.Add(@(@{ text = "Back"; callback_data = "menu:main" }))
     return $rows
 }
+function Update-FleetDashboard($fleet) {
+    # fleet fix v3.8: one pinned, self-editing status message - live fleet state
+    # without /as /bs. At most one update per 10s, and only when something changed.
+    if (@($fleet).Count -eq 0) { return }
+    if ($script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 10) { return }
+    $lines = @()
+    foreach ($w in @($fleet)) {
+        $d = $null
+        try { $d = Get-WorkerDoing $w } catch {}
+        if ($d) {
+            $state = if ($d.busy) { "working" } else { "idle" }
+            $brief = [string]$d.tail
+            if ($brief.Length -gt 140) { $brief = $brief.Substring(0, 140) + "..." }
+            if ($brief) { $lines += ($w.name + " - " + $state + " - " + $brief) } else { $lines += ($w.name + " - " + $state) }
+        } else {
+            $lines += ($w.name + " - unreachable")
+        }
+    }
+    $text = "fleet status (live):`n" + ($lines -join "`n") + "`nupdated " + (Get-Date -Format HH:mm:ss)
+    if ($text -eq $script:dashLastText) { return }
+    $script:dashLastUpdate = Get-Date
+    if (-not $script:dashMsgId) {
+        try {
+            $c = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getChat?chat_id=" + $chatId) -TimeoutSec 15
+            $pm = $c.result.pinned_message
+            if ($pm -and [string]$pm.text -match '^fleet status') { $script:dashMsgId = [long]$pm.message_id }
+        } catch {}
+    }
+    if ($script:dashMsgId) {
+        $eBody = @{ chat_id = $chatId; message_id = $script:dashMsgId; text = $text } | ConvertTo-Json -Depth 6
+        try {
+            [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/editMessageText") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($eBody)) -TimeoutSec 15)
+            $script:dashLastText = $text
+            return
+        } catch {
+            $em = ""; if ($_.ErrorDetails) { $em = [string]$_.ErrorDetails.Message }
+            if ($em -match 'not modified') { $script:dashLastText = $text; return }
+            $script:dashMsgId = $null
+        }
+    }
+    $sBody = @{ chat_id = $chatId; text = $text } | ConvertTo-Json -Depth 6
+    try {
+        $r = Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($sBody)) -TimeoutSec 15
+        if ($r -and $r.result -and $r.result.message_id) {
+            $script:dashMsgId = [long]$r.result.message_id
+            $script:dashLastText = $text
+            $pBody = @{ chat_id = $chatId; message_id = $script:dashMsgId; disable_notification = $true } | ConvertTo-Json
+            try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/pinChatMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($pBody)) -TimeoutSec 15) } catch {}
+        }
+    } catch {}
+}
 function Get-OverseerUpdates([long]$offset) {
     try {
         $r = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getUpdates?timeout=0&offset=" + $offset) -TimeoutSec 15
@@ -495,6 +546,11 @@ $lastSuggested = @{}
 $lastRelayedWorker = $null
 $pendingMsgFor = $null   # v2.6: message-mode worker id (button-driven)
 $pendingIntFor = $null   # v2.6: interrupt-advice-mode worker id
+$stablePolls = @{}          # v3.8: streaming-stability counter per worker
+$pendingStreamHash = @{}    # v3.8: last seen streaming hash per worker
+$dashMsgId = $null          # v3.8: pinned dashboard message id
+$dashLastText = ""          # v3.8: last dashboard text (change detection)
+$dashLastUpdate = $null     # v3.8: dashboard throttle clock
 $tgOffset = 0
 $workers = @()
 
@@ -601,6 +657,18 @@ while ($true) {
                 if ($wkr -and $wkr.session) { $txt = "/prompt " + $wkr.name + " what is next to implement? answer in two or three short lines" }
                 else { Send-OverseerTelegram "that menu is stale - /menu for a fresh one"; continue }
             }
+            elseif ($cbData -match '^sugs:(\d+)$') {
+                $wkr = Resolve-WorkerTarget $Matches[1] $workers
+                $sg = $null
+                if ($wkr) { $sg = $lastSuggested[$wkr.id] }
+                if ($wkr -and $wkr.session -and $sg -and $sg -notmatch '^none') {
+                    $ok = Send-WorkerText $wkr.url $wkr.session $sg
+                    if ($ok) { Send-OverseerTelegram ("sent suggestion to " + $wkr.name + ": " + $sg) }
+                    else { Send-OverseerTelegram ("DELIVERY FAILED to " + $wkr.name + " - server rejected it") }
+                } else { Send-OverseerTelegram "that suggestion is stale - nothing sent" }
+                continue
+            }
+            elseif ($cbData -match '^sugn:(\d+)$') { continue }
             else { continue }
         }
         else {
@@ -1500,6 +1568,26 @@ while ($true) {
                     )
                 )
 
+            # fleet fix v3.8: ONE relay per completed turn. opencode stamps
+            # info.time.completed when an assistant turn finishes; while it is
+            # still streaming we wait. Fallback if a build never stamps it:
+            # relay once the text has been stable for 6 polls.
+            $isFinal = $false
+            try { if ($last.info.time.completed) { $isFinal = $true } } catch {}
+
+            if ($isFinal) {
+                $stablePolls[$wk.id] = 0
+                $pendingStreamHash[$wk.id] = ""
+            } else {
+                if ($pendingStreamHash[$wk.id] -eq $h) {
+                    $stablePolls[$wk.id] = [int]$stablePolls[$wk.id] + 1
+                } else {
+                    $pendingStreamHash[$wk.id] = $h
+                    $stablePolls[$wk.id] = 0
+                }
+                if ([int]$stablePolls[$wk.id] -lt 6) { continue }
+            }
+
             if ($lastHash[$wk.id] -eq $h) {
                 continue
             }
@@ -1509,7 +1597,7 @@ while ($true) {
                 (Get-Date -Format HH:mm:ss) +
                 "] " +
                 $wk.name +
-                " replied (" +
+                " turn finished (" +
                 $text.Length +
                 " chars) - summarizing"
             ) -ForegroundColor DarkGray
@@ -1562,7 +1650,13 @@ while ($true) {
                 $wk.project +
                 "]`n" +
                 $sum
-            Send-OverseerTelegram $relay
+            # fleet fix v3.8: one-tap suggestion buttons on the relay
+            if ($sug -and $sug -notmatch '^none') {
+                $sugRows = @(@(@{ text = "Send suggestion"; callback_data = ("sugs:" + $wk.id) }, @{ text = "Skip"; callback_data = ("sugn:" + $wk.id) }))
+                Send-OverseerInlineMenu $relay $sugRows
+            } else {
+                Send-OverseerTelegram $relay
+            }
         }
         catch {
 
@@ -1574,6 +1668,8 @@ while ($true) {
             ) -ForegroundColor DarkYellow
         }
     }
+
+    Update-FleetDashboard $workers   # fleet fix v3.8: live pinned status
 
     Start-Sleep -Seconds $PollSeconds
 }
