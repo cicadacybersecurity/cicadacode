@@ -139,73 +139,79 @@ function Get-WorkerInlineCommandMenu([string]$id, [string]$name) {
     [void]$rows.Add(@(@{ text = "Back"; callback_data = "menu:main" }))
     return $rows
 }
-function Update-FleetDashboard($fleet) {
-    # fleet fix v3.8/v4.0: one pinned, self-editing LIVE status message - checks
-    # every loop cycle (~3s) and edits the moment anything changed. No churn when
-    # idle: the change-detection gate below means zero edits while nothing moves.
-    if (@($fleet).Count -eq 0) { return }
-    if ($script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 3) { return }
-    # fleet fix v3.9: slim lines - "Name - busy 4m" / "Name - idle 26m".
-    # Duration comes from opencode's own message timestamps, so it is real.
-    $lines = @()
-    foreach ($w in @($fleet)) {
-        $d = $null
-        try { $d = Get-WorkerDoing $w } catch {}
-        if ($d) {
-            $state = if ($d.busy) { "busy" } else { "idle" }
-            $for = ""
-            if ($d.sinceMs -and [long]$d.sinceMs -gt 0) {
-                try {
-                    $ms = [long]$d.sinceMs
-                    if ($ms -lt 100000000000) { $ms = $ms * 1000 }
-                    $span = [DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($ms)
-                    if ($span.TotalHours -ge 1) { $for = (" " + [int]$span.TotalHours + "h " + $span.Minutes + "m") }
-                    elseif ($span.TotalMinutes -ge 1) { $for = (" " + [int]$span.TotalMinutes + "m") }
-                    else { $for = (" " + [Math]::Max(0, [int]$span.TotalSeconds) + "s") }
-                } catch {}
-            }
-            $lines += ($w.name + " - " + $state + $for)
-        } else {
-            $lines += ($w.name + " - unreachable")
-        }
-    }
-    $text = "fleet status (live):`n" + ($lines -join "`n") + "`nupdated " + (Get-Date -Format HH:mm:ss)
-    if ($text -eq $script:dashLastText) { return }
-    $script:dashLastUpdate = Get-Date
-    if (-not $script:dashMsgId) {
-        try {
-            $c = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getChat?chat_id=" + $chatId) -TimeoutSec 15
-            $pm = $c.result.pinned_message
-            if ($pm -and [string]$pm.text -match '^fleet status') { $script:dashMsgId = [long]$pm.message_id }
-        } catch {}
-    }
-    if ($script:dashMsgId) {
-        $eBody = @{ chat_id = $chatId; message_id = $script:dashMsgId; text = $text } | ConvertTo-Json -Depth 6
-        try {
-            [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/editMessageText") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($eBody)) -TimeoutSec 15)
-            $script:dashLastText = $text
-            return
-        } catch {
-            $em = ""; if ($_.ErrorDetails) { $em = [string]$_.ErrorDetails.Message }
-            if ($em -match 'not modified') { $script:dashLastText = $text; return }
-            # fleet fix v4.0: transient failures (429/timeout/network) just skip
-            # this cycle - only repost when the pinned message is genuinely gone.
-            if ($em -match 'message to edit not found|message_id_invalid|message to pin not found|chat not found') {
-                $script:dashMsgId = $null
-            }
-            return
-        }
-    }
-    $sBody = @{ chat_id = $chatId; text = $text } | ConvertTo-Json -Depth 6
+function Update-FleetDashboard($fleet, [switch]$Force) {
+    # fleet fix v4.1: the pinned live status board. Crash-proof (a failure here
+    # can never kill the main loop), throttle-bypassable with -Force, reposts in
+    # the SAME call when the pinned copy is gone, and tells the console what it
+    # did so the board is never silently absent again.
     try {
+        if (@($fleet).Count -eq 0) { return }
+        if (-not $Force -and $script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 3) { return }
+
+        $lines = @()
+        foreach ($w in @($fleet)) {
+            $d = $null
+            try { $d = Get-WorkerDoing $w } catch {}
+            if ($d) {
+                $state = if ($d.busy) { "busy" } else { "idle" }
+                $for = ""
+                if ($d.sinceMs -and [long]$d.sinceMs -gt 0) {
+                    try {
+                        $ms = [long]$d.sinceMs
+                        if ($ms -lt 100000000000) { $ms = $ms * 1000 }
+                        $span = [DateTimeOffset]::UtcNow - [DateTimeOffset]::FromUnixTimeMilliseconds($ms)
+                        if ($span.TotalHours -ge 1) { $for = (" " + [int]$span.TotalHours + "h " + $span.Minutes + "m") }
+                        elseif ($span.TotalMinutes -ge 1) { $for = (" " + [int]$span.TotalMinutes + "m") }
+                        else { $for = (" " + [Math]::Max(0, [int]$span.TotalSeconds) + "s") }
+                    } catch {}
+                }
+                $lines += ($w.name + " - " + $state + $for)
+            } else {
+                $lines += ($w.name + " - unreachable")
+            }
+        }
+        $text = "fleet status (live):`n" + ($lines -join "`n") + "`nupdated " + (Get-Date -Format HH:mm:ss)
+        if (-not $Force -and $text -eq $script:dashLastText) { return }
+        $script:dashLastUpdate = Get-Date
+
+        if (-not $script:dashMsgId) {
+            try {
+                $c = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getChat?chat_id=" + $chatId) -TimeoutSec 15
+                $pm = $c.result.pinned_message
+                if ($pm -and [string]$pm.text -match '^fleet status') { $script:dashMsgId = [long]$pm.message_id }
+            } catch {}
+        }
+
+        if ($script:dashMsgId) {
+            $eBody = @{ chat_id = $chatId; message_id = $script:dashMsgId; text = $text } | ConvertTo-Json -Depth 6
+            try {
+                [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/editMessageText") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($eBody)) -TimeoutSec 15)
+                $script:dashLastText = $text
+                return
+            } catch {
+                $em = ""; if ($_.ErrorDetails) { $em = [string]$_.ErrorDetails.Message }
+                if ($em -match 'not modified') { $script:dashLastText = $text; return }
+                if ($em -match 'message to edit not found|message_id_invalid|chat not found|message to pin') {
+                    $script:dashMsgId = $null   # genuinely gone - fall through and repost now
+                } else {
+                    Write-Host ("  dashboard edit skipped (transient): " + $em) -ForegroundColor DarkYellow
+                    return   # transient - next cycle retries the edit
+                }
+            }
+        }
+
+        $sBody = @{ chat_id = $chatId; text = $text } | ConvertTo-Json -Depth 6
         $r = Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($sBody)) -TimeoutSec 15
         if ($r -and $r.result -and $r.result.message_id) {
             $script:dashMsgId = [long]$r.result.message_id
             $script:dashLastText = $text
             $pBody = @{ chat_id = $chatId; message_id = $script:dashMsgId; disable_notification = $true } | ConvertTo-Json
             try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/pinChatMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($pBody)) -TimeoutSec 15) } catch {}
+            Write-Host ("  dashboard posted + pinned (msg " + $script:dashMsgId + ")") -ForegroundColor DarkGray
         }
-    } catch {}
+    } catch {
+        Write-Host ("  dashboard update failed: " + $_.Exception.Message) -ForegroundColor DarkYellow
+    }
 }
 function Get-OverseerUpdates([long]$offset) {
     try {
@@ -610,7 +616,8 @@ if ($AutoDetect) {
     if ($workers.Count -eq 0) {
         Send-OverseerTelegram "auto-detect: no live workers found yet - a worker appears once its console sends its first task; /detect anytime to adopt later ones."
     } else {
-        Send-OverseerTelegram ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers))
+        Send-OverseerInlineMenu ("auto-adopted " + $workers.Count + " worker(s) - watching:`n" + (Get-FleetRoster $workers)) @(@(@{ text = "Fleet status (live)"; callback_data = "menu:dash" }))
+        Update-FleetDashboard $workers -Force   # fleet fix v4.1: pin the live board at startup
     }
 }
 
@@ -698,6 +705,10 @@ while ($true) {
                 continue
             }
             elseif ($cbData -match '^sugn:(\d+)$') { continue }
+            elseif ($cbData -eq "menu:dash") {
+                Update-FleetDashboard $workers -Force
+                continue
+            }
             else { continue }
         }
         else {
@@ -900,7 +911,8 @@ while ($true) {
                 Send-OverseerTelegram "no live workers detected."
             }
             else {
-                Send-OverseerTelegram (Get-FleetRoster $workers)
+                Send-OverseerInlineMenu (Get-FleetRoster $workers) @(@(@{ text = "Fleet status (live)"; callback_data = "menu:dash" }))
+                Update-FleetDashboard $workers -Force   # fleet fix v4.1: refresh the board on adoption
             }
 
             continue
