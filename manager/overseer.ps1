@@ -40,8 +40,18 @@ function Send-OverseerTelegram([string]$text) {
     } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
 }
 function Send-OverseerMenu([string]$text, $rows) {
-    # fleet fix v2.7: persistent reply keyboard - stays pinned above the input
-    # box until Hide; buttons send their label as text (rides the command paths)
+    # fleet fix v3.2: force the button panel to auto-OPEN above the input box.
+    # Telegram clients remember a collapsed keyboard; removing it and instantly
+    # re-sending makes the client treat it as brand new and expand it. The
+    # remove message self-deletes so the chat stays clean.
+    $rmBody = @{ chat_id = $chatId; text = "..."; reply_markup = @{ remove_keyboard = $true } } | ConvertTo-Json -Depth 6
+    try {
+        $rm = Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($rmBody)) -TimeoutSec 15
+        if ($rm -and $rm.result -and $rm.result.message_id) {
+            $dBody = @{ chat_id = $chatId; message_id = $rm.result.message_id } | ConvertTo-Json
+            try { [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/deleteMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($dBody)) -TimeoutSec 15) } catch {}
+        }
+    } catch {}
     $body = @{ chat_id = $chatId; text = $text; reply_markup = @{ keyboard = @($rows); is_persistent = $true } } | ConvertTo-Json -Depth 10
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
