@@ -591,9 +591,11 @@ while ($true) {
 
         # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
         # case-insensitive (PowerShell -match already is). No AI decode involved.
-        if ($txt -match '^/([a-z])([a-z])$') {
+        if ($txt -match '^/([a-z])([a-z])(?:\s+(.+))?$') {   # v3.5: optional inline text, e.g. /am run the tests
             $wLetter = $Matches[1].ToLower()
             $cmdLetter = $Matches[2].ToLower()
+            $extra = ""
+            if ($Matches.Count -gt 3) { $extra = ([string]$Matches[3]).Trim() }
             $wkr = $null
             foreach ($w in @($workers)) {
                 if ($w.name.Substring(0, 1).ToLower() -eq $wLetter) { $wkr = $w; break }
@@ -603,9 +605,15 @@ while ($true) {
                 continue
             }
             if ($cmdLetter -eq "m") {
-                $pendingIntFor = $null
-                $pendingMsgFor = $wkr.id
-                Send-OverseerTelegram ("message mode: " + $wkr.name + " - your next typed message goes straight to it, no /prompt needed. /cancel to abort")
+                if ($extra) {
+                    $ok = Send-WorkerText $wkr.url $wkr.session $extra
+                    if ($ok) { Send-OverseerTelegram ("sent to " + $wkr.name + ": " + $extra) }
+                    else { Send-OverseerTelegram ("DELIVERY FAILED to " + $wkr.name + " - server rejected it; see overseer console") }
+                } else {
+                    $pendingIntFor = $null
+                    $pendingMsgFor = $wkr.id
+                    Send-OverseerTelegram ("message mode: " + $wkr.name + " - your next typed message goes straight to it, no /prompt needed. /cancel to abort")
+                }
                 continue
             }
             elseif ($cmdLetter -eq "s") {
@@ -619,13 +627,19 @@ while ($true) {
                 continue
             }
             elseif ($cmdLetter -eq "i") {
-                $pendingMsgFor = $null
-                $pendingIntFor = $wkr.id
-                Send-OverseerTelegram ("interrupt mode: " + $wkr.name + " - your next typed message becomes the interrupt advice. /cancel to abort")
+                if ($extra) {
+                    Invoke-WorkerInterrupt $wkr.url $wkr.session $extra
+                    Send-OverseerTelegram ("interrupted " + $wkr.name + " with advice: " + $extra)
+                } else {
+                    $pendingMsgFor = $null
+                    $pendingIntFor = $wkr.id
+                    Send-OverseerTelegram ("interrupt mode: " + $wkr.name + " - your next typed message becomes the interrupt advice. /cancel to abort")
+                }
                 continue
             }
             elseif ($cmdLetter -eq "n") {
-                $txt = "/prompt " + $wkr.name + " whats next to implement? answer in two or three short lines"
+                if (-not $extra) { $extra = "whats next to implement? answer in two or three short lines" }
+                $txt = "/prompt " + $wkr.name + " " + $extra
             }
             else {
                 Send-OverseerTelegram ("unknown action '" + $cmdLetter + "' - use m (message), s (status), n (next), i (interrupt), e.g. /am")
