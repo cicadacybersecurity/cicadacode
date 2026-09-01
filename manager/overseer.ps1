@@ -140,10 +140,11 @@ function Get-WorkerInlineCommandMenu([string]$id, [string]$name) {
     return $rows
 }
 function Update-FleetDashboard($fleet) {
-    # fleet fix v3.8: one pinned, self-editing status message - live fleet state
-    # without /as /bs. At most one update per 10s, and only when something changed.
+    # fleet fix v3.8/v4.0: one pinned, self-editing LIVE status message - checks
+    # every loop cycle (~3s) and edits the moment anything changed. No churn when
+    # idle: the change-detection gate below means zero edits while nothing moves.
     if (@($fleet).Count -eq 0) { return }
-    if ($script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 10) { return }
+    if ($script:dashLastUpdate -and ((Get-Date) - $script:dashLastUpdate).TotalSeconds -lt 3) { return }
     # fleet fix v3.9: slim lines - "Name - busy 4m" / "Name - idle 26m".
     # Duration comes from opencode's own message timestamps, so it is real.
     $lines = @()
@@ -187,7 +188,12 @@ function Update-FleetDashboard($fleet) {
         } catch {
             $em = ""; if ($_.ErrorDetails) { $em = [string]$_.ErrorDetails.Message }
             if ($em -match 'not modified') { $script:dashLastText = $text; return }
-            $script:dashMsgId = $null
+            # fleet fix v4.0: transient failures (429/timeout/network) just skip
+            # this cycle - only repost when the pinned message is genuinely gone.
+            if ($em -match 'message to edit not found|message_id_invalid|message to pin not found|chat not found') {
+                $script:dashMsgId = $null
+            }
+            return
         }
     }
     $sBody = @{ chat_id = $chatId; text = $text } | ConvertTo-Json -Depth 6
