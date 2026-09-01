@@ -16,6 +16,31 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "engine.ps1")
 Import-CicadaSecrets
 
+# fleet fix v4.3: self-logging - everything the overseer prints lands in
+# manager\overseer.log, so debugging never needs console-hunting again.
+try { Start-Transcript -Path (Join-Path $PSScriptRoot "overseer.log") -Append -Force | Out-Null } catch {}
+
+# fleet fix v4.3: split-brain guard - if another overseer instance has a fresh
+# heartbeat, kill it. A wedged twin consuming getUpdates is why commands can
+# show read receipts yet never get replies. CIM-free: lock file + Get-Process.
+$script:lockFile = Join-Path $PSScriptRoot "overseer.lock"
+try {
+    if (Test-Path $script:lockFile) {
+        $lock = Get-Content $script:lockFile -Raw | ConvertFrom-Json
+        $oldPid = [int]$lock.pid
+        $lockAge = (New-TimeSpan -Start ([datetime]::Parse([string]$lock.stamp)) -End (Get-Date)).TotalSeconds
+        $oldAlive = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+        if ($oldAlive -and $oldAlive.ProcessName -match '^(powershell|pwsh)$' -and $oldAlive.Id -ne $PID -and $lockAge -lt 60) {
+            Write-Host ("another overseer instance (PID " + $oldPid + ", heartbeat " + [int]$lockAge + "s ago) is live - stopping it") -ForegroundColor Yellow
+            Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    }
+} catch {}
+function Write-OverseerLock {
+    try { (@{ pid = $PID; stamp = (Get-Date).ToString("o") } | ConvertTo-Json) | Set-Content $script:lockFile -Encoding UTF8 } catch {}
+}
+Write-OverseerLock
 $callsigns = @("Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet")
 function Get-Callsign([string]$id) {
     $n = 0
@@ -40,6 +65,16 @@ function Send-OverseerTelegram([string]$text) {
     try {
         [void](Invoke-RestMethod -Method Post -Uri ("https://api.telegram.org/bot" + $token + "/sendMessage") -Headers @{ "Content-Type" = "application/json; charset=utf-8" } -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30)
     } catch { Write-Host ("  telegram send failed: " + $_.Exception.Message) -ForegroundColor DarkYellow }
+}
+
+# fleet fix v4.3: NEVER die silently. Any uncaught error anywhere gets logged
+# (transcript) and reported to Telegram, then execution continues - a broken
+# handler kills one reply, not the overseer.
+trap {
+    $em = $_.Exception.Message
+    Write-Host ("overseer error (staying alive): " + $em) -ForegroundColor Red
+    try { Send-OverseerTelegram ("overseer error (I stayed alive): " + $em) } catch {}
+    continue
 }
 
 function Send-OverseerMenu([string]$text, $rows) {
@@ -719,6 +754,10 @@ while ($true) {
 
         # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
         # case-insensitive (PowerShell -match already is). No AI decode involved.
+        if ($txt -match '^/ping') {
+            Send-OverseerTelegram ("pong - overseer alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
+            continue
+        }
         if ($txt -match '^/([a-z])([a-z])(?:\s+(.+))?$') {   # v3.5: optional inline text, e.g. /am run the tests
             $wLetter = $Matches[1].ToLower()
             $cmdLetter = $Matches[2].ToLower()
@@ -1701,6 +1740,7 @@ while ($true) {
 
     Update-FleetDashboard $workers   # fleet fix v3.8: live pinned status
 
+    Write-OverseerLock   # fleet fix v4.3: heartbeat for the split-brain guard
     Start-Sleep -Seconds $PollSeconds
 }
 
