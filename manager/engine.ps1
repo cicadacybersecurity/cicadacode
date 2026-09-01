@@ -17,9 +17,12 @@ function Import-CicadaSecrets {
         foreach ($p in $s.PSObject.Properties) {
             $v = [string]$p.Value
             if ($v -and $v -notmatch "^PASTE-") {
-                if (-not [Environment]::GetEnvironmentVariable($p.Name, "Process")) {
-                    [Environment]::SetEnvironmentVariable($p.Name, $v, "Process")
-                }
+                # fleet fix: secrets.json is AUTHORITATIVE. The old guard only set
+                # a var if the process lacked one, so a stale MINIMAX_API_KEY
+                # inherited from the launching shell silently beat the file -
+                # after a key rotation every API call 401'd while the file tested
+                # fine. Always overwrite Process scope.
+                [Environment]::SetEnvironmentVariable($p.Name, $v, "Process")
             }
         }
     }
