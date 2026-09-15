@@ -1,0 +1,1 @@
+"""CICADA GUI package (Kivy presentation layer)."""

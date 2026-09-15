@@ -8,3 +8,5 @@ state/runs/
 *.before-*
 *.corrupt-*
 state/
+state/secrets/
+gui/state/

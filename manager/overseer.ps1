@@ -18,6 +18,9 @@
 # poll timeouts, broader listener detection.
 # v4.7: Fleet status button replies visibly; /ak (or /kill Alpha, /killall)
 # kills an agent's serve process by port ownership - no WMI.
+# v4.8: every JSON GET force-decodes UTF-8 (Read-WorkerJson) - kills the
+# garbled-character mojibake at the source; ConvertFrom-WorkerText backstop
+# hardened with ANSI-proof guards and replacement-char rejection.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "engine.ps1")
 Import-CicadaSecrets
@@ -323,7 +326,7 @@ function Update-FleetDashboard($fleet, [switch]$Force) {
 }
 function Get-OverseerUpdates([long]$offset) {
     try {
-        $r = Invoke-RestMethod -Method Get -Uri ("https://api.telegram.org/bot" + $token + "/getUpdates?timeout=0&offset=" + $offset) -TimeoutSec 15
+        $r = Read-WorkerJson ("https://api.telegram.org/bot" + $token + "/getUpdates?timeout=0&offset=" + $offset) 15   # fleet fix v4.8: operator text decodes clean too
         return $r.result
     } catch { return @() }
 }
@@ -410,12 +413,28 @@ function Stop-WorkerProcess($wk) {
         return ($wk.name + ": kill failed for " + $pname + " (PID " + $kpid + "): " + $_.Exception.Message)
     }
 }
+function Read-WorkerJson([string]$uri, [int]$timeoutSec = 10) {
+    # fleet fix v4.8: forced UTF-8 decode for every JSON GET. Invoke-RestMethod
+    # on PS 5.1 decodes charset-less responses with the system ANSI codepage
+    # (1252) - that is where the garbled em-dash mojibake came from. Read the
+    # raw bytes and decode as UTF-8 ourselves.
+    $wr = Invoke-WebRequest -UseBasicParsing -Method Get -Uri $uri -TimeoutSec $timeoutSec
+    $json = [System.Text.Encoding]::UTF8.GetString($wr.RawContentStream.ToArray())
+    return ($json | ConvertFrom-Json)
+}
 function ConvertFrom-WorkerText([string]$s) {
-    # fleet fix v3.6: strip <think> blocks (they flood relays and choke the
-    # summary API) and repair PS 5.1 Latin-1 mojibake (â€ style) from UTF-8 APIs
+    # fleet fix v4.8: strip think blocks; repair any residual mojibake by
+    # codepage round-trip. The guard is written with regex-escape literals only
+    # (zero non-ASCII bytes) so it works even if this .ps1 is ever read as ANSI.
     $s = [regex]::Replace($s, "(?s)<think>.*?</think>", "").Trim()
-    if ($s -match 'â€|Ã.') {
-        try { $s = [System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::GetEncoding('ISO-8859-1').GetBytes($s)) } catch {}
+    if ($s -match '[\u00C0-\u00F6][\u0080-\u00FF\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2013-\u2026\u20AC\u2122]') {
+        # 1252-flavor first (visible punctuation), then Latin-1 (C1 controls).
+        # A repair yielding the replacement char is rejected, so clean text is
+        # never made worse.
+        try { $f = [System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::GetEncoding(1252).GetBytes($s)) } catch { $f = $null }
+        if ($f -and $f -notmatch '\uFFFD') { return $f }
+        try { $f = [System.Text.Encoding]::UTF8.GetString([System.Text.Encoding]::GetEncoding('ISO-8859-1').GetBytes($s)) } catch { $f = $null }
+        if ($f -and $f -notmatch '\uFFFD') { return $f }
     }
     return $s
 }
@@ -424,7 +443,7 @@ function Get-WorkerDoing($wk, [int]$TimeoutSec = 15) {   # fleet fix v4.6: dashb
     # fleet fix v3.9: also report WHEN the current state began (busy = last user
     # message created; idle = last assistant turn completed) and run the tail
     # through the mojibake/think cleaner.
-    $msgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec $TimeoutSec
+    $msgs = Read-WorkerJson ($wk.url + "/session/" + $wk.session + "/message") $TimeoutSec   # fleet fix v4.8: forced UTF-8 decode
     $lastAny = $null; $lastAssistant = $null
     foreach ($mm in @($msgs)) {
         $role = [string]$mm.info.role
@@ -453,7 +472,7 @@ function Get-WorkerDoing($wk, [int]$TimeoutSec = 15) {   # fleet fix v4.6: dashb
 
 function Invoke-WorkerQuery([string]$url, [string]$session, [string]$question, [string]$who) {
     try {
-        $msgs = Invoke-RestMethod -Method Get -Uri ($url + "/session/" + $session + "/message") -TimeoutSec 20
+        $msgs = Read-WorkerJson ($url + "/session/" + $session + "/message") 20   # fleet fix v4.8
 
         $history = @()
 
@@ -594,10 +613,7 @@ function Find-LiveWorkers {
         $url = "http://127.0.0.1:" + $port
 
         try {
-            $sessions = Invoke-RestMethod `
-                -Method Get `
-                -Uri ($url + "/session") `
-                -TimeoutSec 2
+            $sessions = Read-WorkerJson ($url + "/session") 2   # fleet fix v4.8: forced UTF-8
 
             $newest = @(
                 $sessions |
@@ -661,10 +677,7 @@ function Get-FleetRoster($fleet) {
 
         if ($w.session) {
             try {
-                $sessions = Invoke-RestMethod `
-                    -Method Get `
-                    -Uri ($w.url + "/session") `
-                    -TimeoutSec 5
+                $sessions = Read-WorkerJson ($w.url + "/session") 5   # fleet fix v4.8
 
                 $sess = $sessions |
                     Where-Object { [string]$_.id -eq [string]$w.session } |
@@ -697,9 +710,9 @@ function Get-FleetRoster($fleet) {
     )
 }
 try { $host.UI.RawUI.WindowTitle = "CICADA overseer (Telegram)" } catch {}
-Write-Host ("overseer v4.7 live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
+Write-Host ("overseer v4.8 live (poll " + $PollSeconds + "s) - /detect /fleet /status /doing <name> /interrupt <name> <advice>") -ForegroundColor Cyan
 Write-Host "  workers are Alpha, Bravo, Charlie... by detection order. answer yes to send a suggestion, '<name>: <text>' to steer. Ctrl+C to stop." -ForegroundColor DarkGray
-Send-OverseerTelegram ("overseer v4.7 online (PID " + $PID + "). Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt, /ak kill Alpha (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet.")
+Send-OverseerTelegram ("overseer v4.8 online (PID " + $PID + "). Shorthand: /<letter><action> - /am message Alpha, /as status, /an next, /ai interrupt, /ak kill Alpha (b/c/d = Bravo/Charlie/Delta). /detect adopts the fleet; /menu = cheat sheet.")
 Remove-OverseerPinnedMenu   # fleet fix v3.1: clear any stale pinned menu
 Send-OverseerKeyboardRemove "keyboards off - shorthand: /am message Alpha, /bs status, /cn next, /di interrupt (/menu for help)"   # fleet fix v3.4
 
@@ -741,7 +754,7 @@ if ($AutoDetect) {
     foreach ($wk in @($workers)) {
         if (-not $wk.session) { continue }
         try {
-            $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 8
+            $pMsgs = Read-WorkerJson ($wk.url + "/session/" + $wk.session + "/message") 8   # fleet fix v4.8
             $pLast = $null
             foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
             if ($pLast) {
@@ -876,7 +889,7 @@ while ($true) {
         # fleet fix v3.4: shorthand commands - /<worker letter><action letter>,
         # case-insensitive (PowerShell -match already is). No AI decode involved.
         if ($txt -match '^/ping') {
-            Send-OverseerTelegram ("pong - overseer v4.7 alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
+            Send-OverseerTelegram ("pong - overseer v4.8 alive (PID " + $PID + ", " + (Get-Date -Format HH:mm:ss) + ", " + $workers.Count + " worker(s))")   # fleet fix v4.3: instant liveness
             continue
         }
         if ($txt -match '^/([a-z])([a-z])(?:\s+(.+))?$') {   # v3.5: optional inline text, e.g. /am run the tests
@@ -1044,7 +1057,7 @@ while ($true) {
             foreach ($wk in @($workers)) {
                 if (-not $wk.session) { continue }
                 try {
-                    $pMsgs = Invoke-RestMethod -Method Get -Uri ($wk.url + "/session/" + $wk.session + "/message") -TimeoutSec 8
+                    $pMsgs = Read-WorkerJson ($wk.url + "/session/" + $wk.session + "/message") 8   # fleet fix v4.8
                     $pLast = $null
                     foreach ($pm in @($pMsgs)) { if ([string]$pm.info.role -eq "assistant") { $pLast = $pm } }
                     if ($pLast) {
@@ -1565,16 +1578,7 @@ while ($true) {
 
                         try {
 
-                            $msgs =
-                                Invoke-RestMethod `
-                                    -Method Get `
-                                    -Uri (
-                                        $wk.url +
-                                        "/session/" +
-                                        $wk.session +
-                                        "/message"
-                                    ) `
-                                    -TimeoutSec 15
+                            $msgs = Read-WorkerJson ($wk.url + "/session/" + $wk.session + "/message") 15   # fleet fix v4.8
 
                             $last = $null
 
@@ -1723,16 +1727,7 @@ while ($true) {
 
         try {
 
-            $msgs =
-                Invoke-RestMethod `
-                    -Method Get `
-                    -Uri (
-                        $wk.url +
-                        "/session/" +
-                        $wk.session +
-                        "/message"
-                    ) `
-                    -TimeoutSec 8   # fleet fix v4.6: hung workers must not stall the poll loop
+            $msgs = Read-WorkerJson ($wk.url + "/session/" + $wk.session + "/message") 8   # fleet fix v4.8: forced UTF-8 decode
 
             $last = $null
 

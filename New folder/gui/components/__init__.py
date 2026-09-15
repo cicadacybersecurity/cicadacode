@@ -1,0 +1,1 @@
+"""Kivy UI components for the CICADA Aero shell."""
